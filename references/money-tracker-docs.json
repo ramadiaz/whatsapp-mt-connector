@@ -1,0 +1,1015 @@
+{
+    "name": "Money Manager External API",
+    "version": "1.1.7",
+    "documentation_url": "https://money.quhou123.com/Api/docs",
+    "interactive_test_url": "https://money.quhou123.com/Api/test",
+    "description": "External REST-style API for Money Tracker. Support: freemanzk#gmail.com",
+    "readme": "All endpoints use HTTP POST with application/x-www-form-urlencoded body. Copy your API token from the mobile app (Settings → API, premium required) and pass it as the form field token on each request. Use personal endpoints for the user's own ledger; use cashbook endpoints for shared team books. Transaction responses mix millisecond and second Unix timestamps — see timestamp_fields. Interactive tester: https://money.quhou123.com/Api/test",
+    "request_format": {
+        "method": "POST",
+        "content_type": "application/x-www-form-urlencoded",
+        "note": "Do not send a JSON request body. Pass parameters as form fields."
+    },
+    "response_envelope": {
+        "description": "Every endpoint returns a JSON object with this shape.",
+        "schema": {
+            "status": "integer — 1 success, 0 failure",
+            "msg": "string — human-readable message, e.g. success or error reason",
+            "data": "mixed — payload on success; may be absent on failure",
+            "meta": "object — optional; present on getTransactions / getCashbookTransactions query mode"
+        },
+        "success_example": {
+            "status": 1,
+            "msg": "success",
+            "data": "..."
+        },
+        "error_example": {
+            "status": 0,
+            "msg": "token is invalid"
+        }
+    },
+    "authentication": {
+        "summary": "Every API request (except this documentation page) must include your API token.",
+        "how_to_pass": {
+            "field_name": "token",
+            "method": "POST form field (application/x-www-form-urlencoded)",
+            "example": "token=YOUR_API_TOKEN",
+            "note": "Pass token in the same form body as other parameters; do not use a separate Authorization header."
+        },
+        "where_to_get_token": {
+            "source": "Mobile app → Settings → API",
+            "requirements": "Signed in + premium subscription",
+            "usage": "Copy the token shown on that page into your integration or the interactive tester at https://money.quhou123.com/Api/test"
+        },
+        "validity": "Long-lived: remains valid until you tap regenerate in the app (Settings → API).",
+        "revocation": "Regenerating in the app invalidates the previous token immediately.",
+        "cannot_use": "The app login session (Auth-Token header used inside the mobile app) is not accepted by these external endpoints."
+    },
+    "query_modes": {
+        "applies_to": [
+            "getTransactions",
+            "getCashbookTransactions"
+        ],
+        "default_mode": {
+            "trigger": "Omit start_date, end_date, offset (or offset=0), type, category_id, and account_id",
+            "sort": "server_update_time desc (Unix seconds)",
+            "limit": "Default 50; passing limit alone only changes count (max 500), does not switch modes",
+            "meta": "Not returned"
+        },
+        "query_mode": {
+            "trigger": "Any of: start_date, end_date, offset>0, type, category_id, account_id",
+            "sort": "date_time desc (Unix milliseconds)",
+            "meta": "Returned (total, limit, offset, has_more, optional start_date/end_date)",
+            "note": "Passing only type (no dates) filters all matching records in history, not just the latest 50"
+        },
+        "date_range_rules": {
+            "format": "YYYY-MM-DD for start_date / end_date; month and day may be non-zero-padded (e.g. 2026-1-5)",
+            "same_as_add_date": "Same parsing rules as addTransaction / addCashbookTransaction date parameter",
+            "timezone": "Inclusive day range uses server default timezone when mapping to date_time (ms); see timestamp_fields.date_filter_timezone",
+            "meta_echo": "meta.start_date / meta.end_date are normalized to zero-padded YYYY-MM-DD",
+            "max_span_days": 366,
+            "max_span_applies_when": "Both start_date and end_date are provided",
+            "read_note": "get* may return type values beyond 1/2 (e.g. transfers) even though add* only writes income/expense"
+        }
+    },
+    "rate_limits_and_quotas": {
+        "requests_per_ip_per_hour": 1000,
+        "rate_limit_window_seconds": 3600,
+        "rate_limit_exceeded_msg": "Too many requests, please try later",
+        "transaction_list_default_limit": 50,
+        "transaction_list_max_limit": 500,
+        "transaction_date_range_max_days": 366,
+        "transaction_date_range_max_days_note": "Enforced only when both start_date and end_date are sent",
+        "pagination_pattern": {
+            "description": "For date-range transaction export, loop until meta.has_more is false.",
+            "pseudo_code": "offset=0; repeat { POST getTransactions with limit=500, offset; offset += limit } while (meta.has_more)"
+        }
+    },
+    "unsupported_capabilities": {
+        "update_transaction": "No API to edit an existing transaction",
+        "delete_transaction": "No API to delete a transaction",
+        "transfer_records": "addTransaction / addCashbookTransaction only accept type 1 (income) or 2 (expense), not transfers",
+        "statistics_or_reports": "No server-side summary endpoint — aggregate in your client after getTransactions",
+        "webhooks": "No push / webhook notifications",
+        "incremental_sync_cursor": "No server_update_time cursor API for external clients (field is Unix seconds); use date-range query or default latest-50"
+    },
+    "timestamp_fields": {
+        "summary": "Transaction objects use mixed Unix timestamp units. Always check the field name before parsing.",
+        "applies_to": [
+            "getTransactions",
+            "getCashbookTransactions",
+            "addTransaction",
+            "addCashbookTransaction"
+        ],
+        "milliseconds": {
+            "date_time": "Ledger entry date/time (also drives query-mode date filters after server converts start_date/end_date)",
+            "add_time": "Client-side creation time when the record was first saved on a device",
+            "update_time": "Client-side last modification time on a device"
+        },
+        "date_filter_timezone": {
+            "identifier": "PRC",
+            "utc_offset_now": "+08:00",
+            "rule": "start_date / end_date calendar boundaries use PHP strtotime on the server default timezone (start day 00:00:00, end day 23:59:59), then compare to date_time (milliseconds)",
+            "not_utc_calendar": "Calendar-day filtering is not fixed to UTC unless the server itself runs in UTC",
+            "epoch_fields": "add_time / update_time / server_* are Unix epochs; use field-specific units when converting (see parse_examples)"
+        },
+        "seconds": {
+            "server_add_time": "Server-side first persist time (Unix epoch seconds)",
+            "server_update_time": "Server-side last update time; default latest-50 list sorts by this field (seconds)"
+        },
+        "write_requests": {
+            "addTransaction_date_param": "Pass calendar field date as YYYY-MM-DD (month/day may be non-zero-padded, e.g. 2026-1-5). Do not send date_time, add_time, update_time, or server_* on write",
+            "server_sets_timestamps": "add* responses include timestamp fields set by the server"
+        },
+        "digit_heuristic": "Rough rule: 13-digit integers are milliseconds; 10-digit integers are seconds",
+        "parse_examples": {
+            "note": "Examples below convert epoch fields only. They do not change calendar start_date/end_date filter boundaries (see date_filter_timezone).",
+            "javascript_date_time": "new Date(tx.date_time)",
+            "javascript_server_update_time": "new Date(tx.server_update_time * 1000)",
+            "python_date_time": "datetime.fromtimestamp(tx[\"date_time\"] / 1000, tz=timezone.utc)",
+            "python_server_update_time": "datetime.fromtimestamp(tx[\"server_update_time\"], tz=timezone.utc)"
+        },
+        "sample_values": {
+            "date_time": {
+                "raw": 1737475200000,
+                "unit": "milliseconds",
+                "means": "2026-01-21 ledger time in examples"
+            },
+            "add_time": {
+                "raw": 1737500000000,
+                "unit": "milliseconds"
+            },
+            "update_time": {
+                "raw": 1737500000000,
+                "unit": "milliseconds"
+            },
+            "server_add_time": {
+                "raw": 1737500000,
+                "unit": "seconds"
+            },
+            "server_update_time": {
+                "raw": 1737500000,
+                "unit": "seconds"
+            }
+        }
+    },
+    "scope_guide": {
+        "title": "Personal ledger vs shared cashbook",
+        "decision_tree": [
+            {
+                "question": "Are you reading or writing a shared team / family cashbook?",
+                "yes": "Use cashbook_* endpoints. cashbook_id is required. Call getCashbookList to discover IDs.",
+                "no": "Use personal endpoints (getTransactions, addTransaction, getCategories, getAccounts). Do not pass cashbook_id."
+            },
+            {
+                "question": "Do you need default currency hints when posting amounts?",
+                "yes": "Call getCurrencyHintDefaults (optional cashbook_id for team books) and/or getCurrencyList.",
+                "no": "Omit currency_code; amount uses user or cashbook default per add* rules."
+            }
+        ],
+        "personal_endpoints": [
+            "addTransaction",
+            "getTransactions",
+            "getCategories",
+            "getAccounts"
+        ],
+        "cashbook_endpoints": [
+            "addCashbookTransaction",
+            "getCashbookTransactions",
+            "getCashbookCategories",
+            "getCashbookAccounts",
+            "getCashbookList"
+        ],
+        "shared_endpoints": [
+            "getCurrencyList",
+            "getCurrencyHintDefaults"
+        ]
+    },
+    "currency_and_amount_semantics": {
+        "summary": "On addTransaction / addCashbookTransaction, the request amount is always in an \"entry currency\". The server stores amount in the book default currency (personal user default or cashbook default) and may also write account_currency_* / foreign_currency_* fields.",
+        "write_parameter": {
+            "field_name": "currency_code",
+            "format": "ISO 4217 three-letter code, e.g. CNY, USD, EUR (must exist in getCurrencyList)",
+            "not_uuid": "Pass ISO code only — not the currency table UUID. Response fields such as currency_id, account_currency_id, and foreign_currency_id are read-only stored IDs.",
+            "optional": "Omit when the amount is already in the linked account currency or book default currency"
+        },
+        "book_default_currency": {
+            "personal_addTransaction": "User default currency — read user_default_currency_code from getCurrencyHintDefaults",
+            "cashbook_addCashbookTransaction": "Cashbook default currency — read cashbook_default_currency_code from getCurrencyHintDefaults with cashbook_id",
+            "required_for_conversion": "If book default currency is not configured: omitting account_id and currency_code still succeeds and stores amount as-is. If conversion is required (foreign currency or account currency ≠ book default) but book default is missing, request fails."
+        },
+        "entry_currency_decision_tree": [
+            {
+                "step": 1,
+                "question": "Is currency_code provided?",
+                "yes": "Entry currency = that ISO code (must exist in getCurrencyList). Request amount is in this currency.",
+                "no": "Go to step 2"
+            },
+            {
+                "step": 2,
+                "question": "Is account_id provided?",
+                "yes": "Entry currency = that account's currency (see currency_code on getAccounts / getCashbookAccounts). Request amount is in account currency.",
+                "no": "Entry currency = book default currency from getCurrencyHintDefaults. Request amount is in book default currency."
+            }
+        ],
+        "combination_table": [
+            {
+                "account_id": "omitted",
+                "currency_code": "omitted",
+                "amount_input_means": "Book default currency when configured; otherwise raw amount with no conversion",
+                "stored_amount_field": "Same as input when entry equals book default or when no book default is configured",
+                "typical_extra_fields": "If entry currency ≠ book default: foreign_currency_id, foreign_currency_amount"
+            },
+            {
+                "account_id": "omitted",
+                "currency_code": "set (e.g. USD)",
+                "amount_input_means": "Explicit ISO currency",
+                "stored_amount_field": "Converted to book default via currency_exchange (base=book default, target=entry code)",
+                "typical_extra_fields": "foreign_currency_id, foreign_currency_amount = raw input"
+            },
+            {
+                "account_id": "set",
+                "currency_code": "omitted",
+                "amount_input_means": "Linked account currency",
+                "stored_amount_field": "Converted to book default",
+                "typical_extra_fields": "account_currency_id, account_currency_amount; foreign_* when entry ≠ account currency"
+            },
+            {
+                "account_id": "set",
+                "currency_code": "set",
+                "amount_input_means": "Explicit ISO currency (entry currency; may differ from account currency)",
+                "stored_amount_field": "Converted to book default",
+                "typical_extra_fields": "account_currency_* and foreign_currency_* per server rules"
+            }
+        ],
+        "exchange_rates": {
+            "source": "currency_exchange table: conversion_rate where base_code = book default ISO, target_code = entry ISO",
+            "formula": "stored amount (book default) = round(input_amount / rate, 2)",
+            "missing_rate_error": "Missing exchange rate: {BOOK} -> {ENTRY}"
+        },
+        "reading_transactions_for_reports": {
+            "amount": "Usually the book-default-currency value — use for cross-category totals in one currency",
+            "foreign_currency_amount": "Original entry amount when user posted in a non-default foreign currency",
+            "account_currency_amount": "Amount in linked account currency when an account was specified on write",
+            "tip": "For expense reports in book default currency, sum amount. Show foreign_currency_amount only when you need the original posted value."
+        },
+        "related_endpoints": [
+            "getCurrencyList",
+            "getCurrencyHintDefaults",
+            "getAccounts",
+            "getCashbookAccounts"
+        ]
+    },
+    "category_data": {
+        "summary": "Category list endpoints return id, title, and type. The title field is NOT always a human display name.",
+        "title_field": {
+            "system_categories": "title is often an i18n resource key, e.g. category_food, category_shopping — not localized text",
+            "user_defined_categories": "title is usually the custom name the user typed in the app"
+        },
+        "type_values": {
+            "1": "Income",
+            "2": "Expense"
+        },
+        "guidance_for_integrators": [
+            "Use id as the stable identifier in reports and when calling add* / get* filters (category_id parameter maps to income_expenditure_category_id in stored records).",
+            "Do not assume title is English or final UI text.",
+            "Optional: maintain your own map for known system keys (category_food → Food) or resolve via your app's locale files if you ship the same key scheme.",
+            "When grouping expenses in reports, group by category id; use title as a label with fallback to id if title looks like a key (e.g. starts with category_)."
+        ],
+        "example_row": {
+            "id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+            "title": "category_food",
+            "type": 2,
+            "display_hint": "Treat as key \"category_food\", not the string \"Food\", unless you localize it"
+        },
+        "applies_to": [
+            "getCategories",
+            "getCashbookCategories"
+        ]
+    },
+    "field_aliases": {
+        "description": "Write request parameters vs persisted / read response field names on transaction objects.",
+        "table": [
+            {
+                "request_parameter": "category_id",
+                "response_field": "income_expenditure_category_id",
+                "used_on_write": [
+                    "addTransaction",
+                    "addCashbookTransaction"
+                ],
+                "used_on_read": [
+                    "getTransactions",
+                    "getCashbookTransactions"
+                ],
+                "notes": "add* success responses expose alias category_id only (income_expenditure_category_id is removed)"
+            },
+            {
+                "request_parameter": "account_id",
+                "response_field": "from_account_id",
+                "used_on_write": [
+                    "addTransaction",
+                    "addCashbookTransaction"
+                ],
+                "used_on_read": [
+                    "getTransactions",
+                    "getCashbookTransactions"
+                ],
+                "notes": "add* success responses expose alias account_id only (from_account_id is removed). to_account_id may exist on read for transfers but add* APIs do not create transfers"
+            }
+        ],
+        "machine_readable_map": {
+            "category_id": "income_expenditure_category_id",
+            "account_id": "from_account_id"
+        }
+    },
+    "changelog": [
+        {
+            "version": "1.1.7",
+            "changes": [
+                "timestamp_fields.date_filter_timezone: expose live server timezone identifier and utc_offset_now"
+            ]
+        },
+        {
+            "version": "1.1.6",
+            "changes": [
+                "Docs: remove duplicate transaction_timestamp_fields from endpoint examples; document server timezone for date filters"
+            ]
+        },
+        {
+            "version": "1.1.5",
+            "changes": [
+                "start_date / end_date accept non-zero-padded month/day (e.g. 2026-1-5), same as add* date",
+                "Unify calendar parsing in parseApiDateYmd; meta echoes canonical YYYY-MM-DD"
+            ]
+        },
+        {
+            "version": "1.1.4",
+            "changes": [
+                "Add timestamp_fields section: date_time/add_time/update_time are ms; server_add_time/server_update_time are seconds",
+                "Annotate query_modes sort keys with units; add parse examples for integrators"
+            ]
+        },
+        {
+            "version": "1.1.3",
+            "changes": [
+                "Clarify currency_code is ISO 4217 (e.g. CNY, USD), not UUID; add add* request examples with currency_code"
+            ]
+        },
+        {
+            "version": "1.1.2",
+            "changes": [
+                "Authentication docs: describe token only (no JWT); clarify source (Settings → API) and form field token"
+            ]
+        },
+        {
+            "version": "1.1.1",
+            "changes": [
+                "Document long-lived token model; revoke via app regenerate",
+                "Add query_modes section; clarify limit-only behavior and date span rules",
+                "Fix currency edge cases, field alias notes, and add* response examples"
+            ]
+        },
+        {
+            "version": "1.1.0",
+            "changes": [
+                "getTransactions / getCashbookTransactions: optional start_date, end_date, limit, offset, filters; query mode returns meta",
+                "Default latest-50 mode sorts by server_update_time desc"
+            ]
+        }
+    ],
+    "endpoints": [
+        {
+            "operation_id": "personal.addTransaction",
+            "name": "Add Transaction",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/addTransaction",
+            "description": "Add one income or expense to the user's personal ledger.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string",
+                    "description": "API token"
+                },
+                "type": {
+                    "required": true,
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2
+                    ],
+                    "description": "1=Income, 2=Expense"
+                },
+                "amount": {
+                    "required": true,
+                    "type": "number",
+                    "description": "Must be > 0; currency see currency_code / account_id rules"
+                },
+                "category_id": {
+                    "required": true,
+                    "type": "string",
+                    "description": "UUID from getCategories"
+                },
+                "date": {
+                    "required": true,
+                    "type": "string",
+                    "format": "YYYY-MM-DD",
+                    "description": "YYYY-MM-DD; month/day may be non-zero-padded (e.g. 2026-1-5)"
+                },
+                "account_id": {
+                    "required": false,
+                    "type": "string",
+                    "description": "UUID from getAccounts"
+                },
+                "remark": {
+                    "required": false,
+                    "type": "string",
+                    "max_length": 100
+                },
+                "currency_code": {
+                    "required": false,
+                    "type": "string",
+                    "description": "Optional ISO 4217 code (e.g. CNY, USD, EUR) from getCurrencyList — not currency table UUID"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN",
+                    "type": "2",
+                    "amount": "35.50",
+                    "category_id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                    "date": "2026-01-21",
+                    "remark": "Lunch"
+                },
+                "request_form_with_currency_code": {
+                    "token": "YOUR_API_TOKEN",
+                    "type": "2",
+                    "amount": "12.99",
+                    "category_id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                    "date": "2026-01-21",
+                    "currency_code": "USD",
+                    "remark": "Online purchase (amount in USD)"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/addTransaction' -d 'token=YOUR_API_TOKEN' -d 'type=2' -d 'amount=35.50' -d 'category_id=1f7cca17-c34f-4fe2-9f63-01fa494ef008' -d 'date=2026-01-21' -d 'remark=Lunch'",
+                "curl_with_currency_code": "curl -X POST 'https://money.quhou123.com/Api/addTransaction' -d 'token=YOUR_API_TOKEN' -d 'type=2' -d 'amount=12.99' -d 'category_id=1f7cca17-c34f-4fe2-9f63-01fa494ef008' -d 'date=2026-01-21' -d 'currency_code=USD' -d 'remark=Online purchase (amount in USD)'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": {
+                        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                        "user_id": 12345,
+                        "type": 2,
+                        "to_account_id": "",
+                        "date_time": 1737475200000,
+                        "year": 2026,
+                        "month": 1,
+                        "day": 21,
+                        "amount": 35.5,
+                        "remark": "Lunch",
+                        "add_time": 1737500000000,
+                        "update_time": 1737500000000,
+                        "server_add_time": 1737500000,
+                        "server_update_time": 1737500000,
+                        "is_server_delete": 0,
+                        "category_id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                        "account_id": ""
+                    }
+                },
+                "response_error": {
+                    "status": 0,
+                    "msg": "Invalid category"
+                }
+            }
+        },
+        {
+            "operation_id": "personal.getTransactions",
+            "name": "Get Transactions",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getTransactions",
+            "description": "List personal transactions. Default: latest 50 by server_update_time desc (seconds). Query mode when any of start_date, end_date, offset>0, type, category_id, account_id is set — filters/sorts by date_time (milliseconds), returns meta. See top-level timestamp_fields.",
+            "default_behavior": "If start_date, end_date, offset, type, category_id and account_id are all omitted, returns the latest 50 records ordered by server_update_time (Unix seconds). limit alone only changes count (default 50, max 500).",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                },
+                "start_date": {
+                    "required": false,
+                    "type": "string",
+                    "format": "YYYY-MM-DD",
+                    "description": "YYYY-MM-DD; month/day may be non-zero-padded (e.g. 2026-1-5)"
+                },
+                "end_date": {
+                    "required": false,
+                    "type": "string",
+                    "format": "YYYY-MM-DD",
+                    "description": "YYYY-MM-DD; month/day may be non-zero-padded (e.g. 2026-1-5)"
+                },
+                "limit": {
+                    "required": false,
+                    "type": "integer",
+                    "default": 50,
+                    "max": 500
+                },
+                "offset": {
+                    "required": false,
+                    "type": "integer",
+                    "default": 0
+                },
+                "type": {
+                    "required": false,
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2
+                    ]
+                },
+                "category_id": {
+                    "required": false,
+                    "type": "string"
+                },
+                "account_id": {
+                    "required": false,
+                    "type": "string",
+                    "maps_to": "from_account_id"
+                }
+            },
+            "example": {
+                "request_form_default": {
+                    "token": "YOUR_API_TOKEN"
+                },
+                "request_form_date_range": {
+                    "token": "YOUR_API_TOKEN",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-01-31",
+                    "limit": "500",
+                    "offset": "0",
+                    "type": "2"
+                },
+                "curl_default": "curl -X POST 'https://money.quhou123.com/Api/getTransactions' -d 'token=YOUR_API_TOKEN'",
+                "curl_date_range": "curl -X POST 'https://money.quhou123.com/Api/getTransactions' -d 'token=YOUR_API_TOKEN' -d 'start_date=2026-01-01' -d 'end_date=2026-01-31' -d 'limit=500' -d 'offset=0' -d 'type=2'",
+                "response_success_default": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                            "user_id": 12345,
+                            "type": 2,
+                            "income_expenditure_category_id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                            "from_account_id": "",
+                            "to_account_id": "",
+                            "date_time": 1737475200000,
+                            "year": 2026,
+                            "month": 1,
+                            "day": 21,
+                            "amount": 35.5,
+                            "remark": "Lunch",
+                            "add_time": 1737500000000,
+                            "update_time": 1737500000000,
+                            "server_add_time": 1737500000,
+                            "server_update_time": 1737500000,
+                            "is_server_delete": 0
+                        }
+                    ]
+                },
+                "response_success_query_mode": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                            "user_id": 12345,
+                            "type": 2,
+                            "income_expenditure_category_id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                            "from_account_id": "",
+                            "to_account_id": "",
+                            "date_time": 1737475200000,
+                            "year": 2026,
+                            "month": 1,
+                            "day": 21,
+                            "amount": 35.5,
+                            "remark": "Lunch",
+                            "add_time": 1737500000000,
+                            "update_time": 1737500000000,
+                            "server_add_time": 1737500000,
+                            "server_update_time": 1737500000,
+                            "is_server_delete": 0
+                        }
+                    ],
+                    "meta": {
+                        "mode": "query",
+                        "total": 128,
+                        "limit": 500,
+                        "offset": 0,
+                        "has_more": false,
+                        "start_date": "2026-01-01",
+                        "end_date": "2026-01-31"
+                    }
+                }
+            }
+        },
+        {
+            "operation_id": "personal.getCategories",
+            "name": "Get Categories",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCategories",
+            "description": "Personal income/expense categories (includes system defaults). title may be an i18n key like category_food.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCategories' -d 'token=YOUR_API_TOKEN'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                            "title": "category_food",
+                            "type": 2
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "operation_id": "personal.getAccounts",
+            "name": "Get Accounts",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getAccounts",
+            "description": "Personal accounts; each row includes currency_id and currency_code (ISO).",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getAccounts' -d 'token=YOUR_API_TOKEN'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "acc-uuid-example",
+                            "name": "Cash",
+                            "currency_id": "cur-uuid",
+                            "currency_code": "CNY"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "operation_id": "cashbook.addTransaction",
+            "name": "Add Cashbook Transaction",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/addCashbookTransaction",
+            "description": "Add one income or expense to a shared cashbook the user belongs to.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                },
+                "cashbook_id": {
+                    "required": true,
+                    "type": "string"
+                },
+                "type": {
+                    "required": true,
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2
+                    ]
+                },
+                "amount": {
+                    "required": true,
+                    "type": "number"
+                },
+                "category_id": {
+                    "required": true,
+                    "type": "string"
+                },
+                "date": {
+                    "required": true,
+                    "type": "string",
+                    "format": "YYYY-MM-DD",
+                    "description": "YYYY-MM-DD; month/day may be non-zero-padded (e.g. 2026-1-5)"
+                },
+                "account_id": {
+                    "required": false,
+                    "type": "string"
+                },
+                "remark": {
+                    "required": false,
+                    "type": "string",
+                    "max_length": 100
+                },
+                "currency_code": {
+                    "required": false,
+                    "type": "string",
+                    "description": "Optional ISO 4217 code (e.g. CNY, USD, EUR) from getCurrencyList — not currency table UUID"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN",
+                    "cashbook_id": "1001",
+                    "type": "2",
+                    "amount": "120.00",
+                    "category_id": "372f1424-2945-48d4-bf2c-15ede07a725b",
+                    "date": "2026-01-15"
+                },
+                "request_form_with_currency_code": {
+                    "token": "YOUR_API_TOKEN",
+                    "cashbook_id": "1001",
+                    "type": "2",
+                    "amount": "49.00",
+                    "category_id": "372f1424-2945-48d4-bf2c-15ede07a725b",
+                    "date": "2026-01-15",
+                    "currency_code": "USD",
+                    "remark": "Team expense posted in USD"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/addCashbookTransaction' -d 'token=YOUR_API_TOKEN' -d 'cashbook_id=1001' -d 'type=2' -d 'amount=120.00' -d 'category_id=372f1424-2945-48d4-bf2c-15ede07a725b' -d 'date=2026-01-15'",
+                "curl_with_currency_code": "curl -X POST 'https://money.quhou123.com/Api/addCashbookTransaction' -d 'token=YOUR_API_TOKEN' -d 'cashbook_id=1001' -d 'type=2' -d 'amount=49.00' -d 'category_id=372f1424-2945-48d4-bf2c-15ede07a725b' -d 'date=2026-01-15' -d 'currency_code=USD' -d 'remark=Team expense posted in USD'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": "...(transaction object)..."
+                },
+                "response_error": {
+                    "status": 0,
+                    "msg": "User is not a cashbook member"
+                }
+            }
+        },
+        {
+            "operation_id": "cashbook.getTransactions",
+            "name": "Get Cashbook Transactions",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCashbookTransactions",
+            "description": "Same query semantics as getTransactions but scoped to cashbook_id. Default sort: server_update_time (seconds). Query mode: date_time (milliseconds). See timestamp_fields.",
+            "default_behavior": "If start_date, end_date, offset, type, category_id and account_id are all omitted, returns the latest 50 records for that cashbook ordered by server_update_time (Unix seconds). limit alone only changes count.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                },
+                "cashbook_id": {
+                    "required": true,
+                    "type": "string"
+                },
+                "start_date": {
+                    "required": false,
+                    "type": "string",
+                    "format": "YYYY-MM-DD",
+                    "description": "YYYY-MM-DD; month/day may be non-zero-padded (e.g. 2026-1-5)"
+                },
+                "end_date": {
+                    "required": false,
+                    "type": "string",
+                    "format": "YYYY-MM-DD",
+                    "description": "YYYY-MM-DD; month/day may be non-zero-padded (e.g. 2026-1-5)"
+                },
+                "limit": {
+                    "required": false,
+                    "type": "integer",
+                    "default": 50,
+                    "max": 500
+                },
+                "offset": {
+                    "required": false,
+                    "type": "integer",
+                    "default": 0
+                },
+                "type": {
+                    "required": false,
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2
+                    ]
+                },
+                "category_id": {
+                    "required": false,
+                    "type": "string"
+                },
+                "account_id": {
+                    "required": false,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN",
+                    "cashbook_id": "1001",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-03-31",
+                    "limit": "500",
+                    "offset": "0"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCashbookTransactions' -d 'token=YOUR_API_TOKEN' -d 'cashbook_id=1001' -d 'start_date=2026-01-01' -d 'end_date=2026-03-31' -d 'limit=500' -d 'offset=0'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                            "user_id": 12345,
+                            "type": 2,
+                            "income_expenditure_category_id": "1f7cca17-c34f-4fe2-9f63-01fa494ef008",
+                            "from_account_id": "",
+                            "to_account_id": "",
+                            "date_time": 1737475200000,
+                            "year": 2026,
+                            "month": 1,
+                            "day": 21,
+                            "amount": 35.5,
+                            "remark": "Lunch",
+                            "add_time": 1737500000000,
+                            "update_time": 1737500000000,
+                            "server_add_time": 1737500000,
+                            "server_update_time": 1737500000,
+                            "is_server_delete": 0
+                        }
+                    ],
+                    "meta": {
+                        "mode": "query",
+                        "total": 42,
+                        "limit": 500,
+                        "offset": 0,
+                        "has_more": false,
+                        "start_date": "2026-01-01",
+                        "end_date": "2026-03-31"
+                    }
+                }
+            }
+        },
+        {
+            "operation_id": "cashbook.getCategories",
+            "name": "Get Cashbook Categories",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCashbookCategories",
+            "description": "Categories for a cashbook.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                },
+                "cashbook_id": {
+                    "required": true,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN",
+                    "cashbook_id": "1001"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCashbookCategories' -d 'token=YOUR_API_TOKEN' -d 'cashbook_id=1001'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "...",
+                            "title": "category_shopping",
+                            "type": 2
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "operation_id": "cashbook.getAccounts",
+            "name": "Get Cashbook Accounts",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCashbookAccounts",
+            "description": "Accounts for a cashbook (for optional account_id on addCashbookTransaction).",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                },
+                "cashbook_id": {
+                    "required": true,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN",
+                    "cashbook_id": "1001"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCashbookAccounts' -d 'token=YOUR_API_TOKEN' -d 'cashbook_id=1001'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": "[...]"
+                }
+            }
+        },
+        {
+            "operation_id": "cashbook.list",
+            "name": "Get Cashbook List",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCashbookList",
+            "description": "Cashbooks the authenticated user has joined.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCashbookList' -d 'token=YOUR_API_TOKEN'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "id": "1001",
+                            "name": "Family"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "operation_id": "currency.list",
+            "name": "Get Currency List",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCurrencyList",
+            "description": "All supported currencies.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCurrencyList' -d 'token=YOUR_API_TOKEN'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": [
+                        {
+                            "code": "CNY",
+                            "currency_name": "Chinese Yuan",
+                            "display_symbol": "¥"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "operation_id": "currency.hintDefaults",
+            "name": "Get Currency Hint Defaults",
+            "method": "POST",
+            "path": "https://money.quhou123.com/Api/getCurrencyHintDefaults",
+            "description": "User default currency; optional cashbook_id adds that book's default.",
+            "parameters": {
+                "token": {
+                    "required": true,
+                    "type": "string"
+                },
+                "cashbook_id": {
+                    "required": false,
+                    "type": "string"
+                }
+            },
+            "example": {
+                "request_form": {
+                    "token": "YOUR_API_TOKEN"
+                },
+                "curl": "curl -X POST 'https://money.quhou123.com/Api/getCurrencyHintDefaults' -d 'token=YOUR_API_TOKEN'",
+                "response_success": {
+                    "status": 1,
+                    "msg": "success",
+                    "data": {
+                        "user_default_currency_id": "uuid-or-null",
+                        "user_default_currency_code": "CNY",
+                        "cashbook_default_currency_id": null,
+                        "cashbook_default_currency_code": null
+                    }
+                }
+            }
+        }
+    ]
+}
