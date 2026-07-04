@@ -3,7 +3,7 @@ package service
 import (
 	"strings"
 
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 )
 
 var synonymMap = map[string][]string{

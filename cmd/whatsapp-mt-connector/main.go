@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ramadiaz/money-wa-bot/internal/app"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/app"
 )
 
 func main() {

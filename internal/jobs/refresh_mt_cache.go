@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/moneytracker"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 )
 
 const TypeRefreshMTCache = "cache:refresh"

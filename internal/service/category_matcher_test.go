@@ -3,8 +3,8 @@ package service_test
 import (
 	"testing"
 
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	"github.com/ramadiaz/money-wa-bot/internal/service"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/service"
 )
 
 func TestMatchCategory_FoodKeyword(t *testing.T) {

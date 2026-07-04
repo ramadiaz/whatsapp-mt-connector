@@ -1,4 +1,4 @@
-module github.com/ramadiaz/money-wa-bot
+module github.com/ramadiaz/whatsapp-mt-connector
 
 go 1.25.7
 

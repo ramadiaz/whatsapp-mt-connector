@@ -1,11 +1,11 @@
-# money-wa-bot
+# whatsapp-mt-connector
 
 Production-ready Go service that bridges WhatsApp (via GOWA) with Money Tracker. Receives GOWA webhooks, extracts transactions via 9Router AI, then writes to Money Tracker with user confirmation.
 
 ## Flow
 
 ```
-WhatsApp → GOWA → signed webhook → money-wa-bot
+WhatsApp → GOWA → signed webhook → whatsapp-mt-connector
   → validate HMAC + sender + idempotency
   → enqueue background job (Asynq)
   → parse text / download receipt image
@@ -30,7 +30,7 @@ WhatsApp → GOWA → signed webhook → money-wa-bot
 ## Setup
 
 ```bash
-cd money-wa-bot
+cd whatsapp-mt-connector
 cp .env.example .env
 # Edit .env with your values
 ```

@@ -7,12 +7,12 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/moneytracker"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/ninerouter"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/timeutil"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/ninerouter"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/timeutil"
 )
 
 type TransactionService struct {

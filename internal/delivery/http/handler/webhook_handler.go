@@ -5,9 +5,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/ramadiaz/money-wa-bot/internal/service"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/service"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 )
 
 type WebhookHandler struct {

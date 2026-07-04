@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
 	"gorm.io/gorm"
 )
 

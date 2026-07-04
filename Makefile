@@ -1,6 +1,6 @@
-BINARY=money-wa-bot
-MODULE=github.com/ramadiaz/money-wa-bot
-DOCKER_IMAGE=money-wa-bot
+BINARY=whatsapp-mt-connector
+MODULE=github.com/ramadiaz/whatsapp-mt-connector
+DOCKER_IMAGE=whatsapp-mt-connector
 
 .PHONY: build run test lint migrate docker-build docker-up docker-down tidy
 

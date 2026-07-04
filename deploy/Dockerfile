@@ -9,7 +9,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /money-wa-bot ./cmd/money-wa-bot
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /whatsapp-mt-connector ./cmd/whatsapp-mt-connector
 
 FROM alpine:3.20
 
@@ -19,7 +19,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
 
 WORKDIR /app
 
-COPY --from=builder /money-wa-bot .
+COPY --from=builder /whatsapp-mt-connector .
 
 USER appuser
 
@@ -28,4 +28,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/money-wa-bot"]
+ENTRYPOINT ["/app/whatsapp-mt-connector"]

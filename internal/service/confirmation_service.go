@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/shopspring/decimal"
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/money"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/money"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 )
 
 type ConfirmationService struct {

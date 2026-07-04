@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  money-wa-bot:
+  whatsapp-mt-connector:
     build:
       context: ..
       dockerfile: deploy/Dockerfile

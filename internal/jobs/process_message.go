@@ -8,14 +8,14 @@ import (
 	"strings"
 
 	"github.com/hibiken/asynq"
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/ninerouter"
-	"github.com/ramadiaz/money-wa-bot/internal/service"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/money"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/timeutil"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/ninerouter"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/service"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/money"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/timeutil"
 	"github.com/shopspring/decimal"
 )
 

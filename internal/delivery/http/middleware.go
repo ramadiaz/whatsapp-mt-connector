@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 )
 
 func correlationIDMiddleware(next http.Handler) http.Handler {

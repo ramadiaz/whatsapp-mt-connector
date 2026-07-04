@@ -1,6 +1,6 @@
 # Money Tracker WhatsApp Bot — Technical Blueprint
 
-Build a production-ready Golang service named `money-wa-bot`.
+Build a production-ready Golang service named `whatsapp-mt-connector`.
 
 The service must run independently from GOWA. GOWA remains a standalone WhatsApp REST gateway on another instance. This service receives GOWA webhooks, validates and processes incoming WhatsApp text/photos, uses 9Router to extract transaction data, then creates a transaction in Money Tracker.
 
@@ -11,7 +11,7 @@ Do not embed, fork, or modify GOWA source code. Treat GOWA as an external authen
 ```text
 WhatsApp user
   -> GOWA instance
-  -> signed webhook to money-wa-bot
+  -> signed webhook to whatsapp-mt-connector
   -> validate signature + sender + idempotency
   -> enqueue background job
   -> parse text / download receipt image
@@ -121,9 +121,9 @@ MT_CACHE_TTL_MINUTES=60
 ## Project Structure
 
 ```text
-money-wa-bot/
+whatsapp-mt-connector/
 ├── cmd/
-│   └── money-wa-bot/
+│   └── whatsapp-mt-connector/
 │       └── main.go
 ├── internal/
 │   ├── app/
@@ -572,7 +572,7 @@ Public Internet
    |
 Reverse Proxy / HTTPS
    |
-money-wa-bot
+whatsapp-mt-connector
    |-- PostgreSQL private network
    |-- Redis private network
    |-- GOWA private HTTPS endpoint
@@ -580,7 +580,7 @@ money-wa-bot
 
 GOWA
    |-- WhatsApp session storage volume
-   |-- Webhook -> money-wa-bot/webhooks/gowa
+   |-- Webhook -> whatsapp-mt-connector/webhooks/gowa
 ```
 
 Use a private overlay network such as Tailscale, WireGuard, or private VPC networking between GOWA, bot, Redis, PostgreSQL, and 9Router.
@@ -588,7 +588,7 @@ Use a private overlay network such as Tailscale, WireGuard, or private VPC netwo
 Expose only:
 
 ```text
-money-wa-bot webhook endpoint through HTTPS
+whatsapp-mt-connector webhook endpoint through HTTPS
 GOWA login/admin access behind authentication
 ```
 

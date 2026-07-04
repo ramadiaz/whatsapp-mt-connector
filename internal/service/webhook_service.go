@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/hibiken/asynq"
-	"github.com/ramadiaz/money-wa-bot/internal/domain/inbound"
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/inbound"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 )
 
 type WebhookService struct {

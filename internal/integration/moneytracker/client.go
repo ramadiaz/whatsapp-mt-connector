@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 )
 
 type MoneyTrackerClient interface {

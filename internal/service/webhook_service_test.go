@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/ramadiaz/money-wa-bot/internal/service"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/service"
 )
 
 func hmacSign(secret string, body []byte) string {

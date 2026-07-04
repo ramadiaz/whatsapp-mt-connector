@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
 )
 
 type AIExtractionResult struct {

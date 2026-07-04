@@ -3,7 +3,7 @@ package ninerouter_test
 import (
 	"testing"
 
-	"github.com/ramadiaz/money-wa-bot/internal/integration/ninerouter"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/ninerouter"
 )
 
 func TestParseAndValidate_Valid(t *testing.T) {

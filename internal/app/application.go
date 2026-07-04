@@ -11,17 +11,17 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/joho/godotenv"
-	"github.com/ramadiaz/money-wa-bot/internal/config"
-	deliveryhttp "github.com/ramadiaz/money-wa-bot/internal/delivery/http"
-	"github.com/ramadiaz/money-wa-bot/internal/delivery/http/handler"
-	gowaintegration "github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/moneytracker"
-	"github.com/ramadiaz/money-wa-bot/internal/integration/ninerouter"
-	"github.com/ramadiaz/money-wa-bot/internal/jobs"
-	"github.com/ramadiaz/money-wa-bot/internal/persistence/postgres"
-	redisqueue "github.com/ramadiaz/money-wa-bot/internal/persistence/redis"
-	"github.com/ramadiaz/money-wa-bot/internal/service"
-	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/config"
+	deliveryhttp "github.com/ramadiaz/whatsapp-mt-connector/internal/delivery/http"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/delivery/http/handler"
+	gowaintegration "github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/ninerouter"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/jobs"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/persistence/postgres"
+	redisqueue "github.com/ramadiaz/whatsapp-mt-connector/internal/persistence/redis"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/service"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -37,7 +37,7 @@ func Run() error {
 	logger.Init(cfg.AppEnv)
 	log := logger.Log
 
-	log.Info().Msg("starting money-wa-bot application")
+	log.Info().Msg("starting whatsapp-mt-connector application")
 	log.Info().Str("env", cfg.AppEnv).Msg("loading configurations")
 
 	log.Info().Str("dsn", cfg.DatabaseURL).Msg("connecting to postgres via gorm")

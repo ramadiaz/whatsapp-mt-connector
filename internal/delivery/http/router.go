@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/ramadiaz/money-wa-bot/internal/delivery/http/handler"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/delivery/http/handler"
 )
 
 func NewRouter(webhookHandler *handler.WebhookHandler, healthHandler *handler.HealthHandler) http.Handler {

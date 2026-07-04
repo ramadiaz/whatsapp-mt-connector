@@ -1,8 +1,8 @@
 version: "3.9"
 
 services:
-  money-wa-bot:
-    image: money-wa-bot:${APP_VERSION:-latest}
+  whatsapp-mt-connector:
+    image: whatsapp-mt-connector:${APP_VERSION:-latest}
     restart: unless-stopped
     env_file: ../.env
     ports:

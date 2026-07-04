@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
 	"gorm.io/gorm"
 )
 

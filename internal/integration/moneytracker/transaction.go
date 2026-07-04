@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
-	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
 )
 
 func (c *Client) AddTransaction(ctx context.Context, req transaction.CreateTransactionRequest) (*transaction.CreatedTransaction, error) {
