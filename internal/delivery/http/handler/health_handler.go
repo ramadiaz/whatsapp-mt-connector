@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
+	"gorm.io/gorm"
 )
 
 type HealthHandler struct {
-	db         *pgxpool.Pool
+	db         *gorm.DB
 	gowaClient gowa.WhatsAppGateway
 }
 
-func NewHealthHandler(db *pgxpool.Pool, gowaClient gowa.WhatsAppGateway) *HealthHandler {
+func NewHealthHandler(db *gorm.DB, gowaClient gowa.WhatsAppGateway) *HealthHandler {
 	return &HealthHandler{db: db, gowaClient: gowaClient}
 }
 
@@ -32,7 +32,11 @@ func (h *HealthHandler) Readyz(w http.ResponseWriter, r *http.Request) {
 	status := map[string]string{}
 	httpStatus := http.StatusOK
 
-	if err := h.db.Ping(ctx); err != nil {
+	sqlDB, err := h.db.DB()
+	if err != nil {
+		status["postgres"] = "down: " + err.Error()
+		httpStatus = http.StatusServiceUnavailable
+	} else if err := sqlDB.PingContext(ctx); err != nil {
 		status["postgres"] = "down: " + err.Error()
 		httpStatus = http.StatusServiceUnavailable
 	} else {

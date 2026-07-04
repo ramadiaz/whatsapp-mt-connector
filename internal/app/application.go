@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/ramadiaz/money-wa-bot/internal/config"
 	deliveryhttp "github.com/ramadiaz/money-wa-bot/internal/delivery/http"
@@ -23,6 +22,8 @@ import (
 	redisqueue "github.com/ramadiaz/money-wa-bot/internal/persistence/redis"
 	"github.com/ramadiaz/money-wa-bot/internal/service"
 	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
+	gormpostgres "gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func Run() error {
@@ -36,14 +37,30 @@ func Run() error {
 	logger.Init(cfg.AppEnv)
 	log := logger.Log
 
-	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	db, err := gorm.Open(gormpostgres.Open(cfg.DatabaseURL), &gorm.Config{})
 	if err != nil {
 		return fmt.Errorf("connect postgres: %w", err)
 	}
-	defer db.Close()
 
-	if err := db.Ping(context.Background()); err != nil {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get sql db: %w", err)
+	}
+	defer sqlDB.Close()
+
+	if err := sqlDB.Ping(); err != nil {
 		return fmt.Errorf("ping postgres: %w", err)
+	}
+
+	err = db.AutoMigrate(
+		&postgres.InboundMessage{},
+		&postgres.PendingTransaction{},
+		&postgres.TransactionSubmission{},
+		&postgres.CategoryCache{},
+		&postgres.AccountCache{},
+	)
+	if err != nil {
+		return fmt.Errorf("auto migrate: %w", err)
 	}
 
 	gowaTimeout := time.Duration(cfg.AITimeoutSeconds) * time.Second

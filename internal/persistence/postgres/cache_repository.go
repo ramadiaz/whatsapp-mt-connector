@@ -5,27 +5,32 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CategoryCacheRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewCategoryCacheRepository(db *pgxpool.Pool) *CategoryCacheRepository {
+func NewCategoryCacheRepository(db *gorm.DB) *CategoryCacheRepository {
 	return &CategoryCacheRepository{db: db}
 }
 
 func (r *CategoryCacheRepository) Upsert(ctx context.Context, categories []transaction.Category) error {
 	now := time.Now()
 	for _, cat := range categories {
-		_, err := r.db.Exec(ctx, `
-			INSERT INTO money_tracker_categories_cache (category_id, title, type, refreshed_at)
-			VALUES ($1,$2,$3,$4)
-			ON CONFLICT (category_id) DO UPDATE SET title=EXCLUDED.title, type=EXCLUDED.type, refreshed_at=EXCLUDED.refreshed_at`,
-			cat.CategoryID, cat.Title, cat.Type, now,
-		)
+		cache := CategoryCache{
+			CategoryID:  cat.CategoryID,
+			Title:       cat.Title,
+			Type:        cat.Type,
+			RefreshedAt: now,
+		}
+		err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "category_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"title", "type", "refreshed_at"}),
+		}).Create(&cache).Error
 		if err != nil {
 			return fmt.Errorf("category cache upsert: %w", err)
 		}
@@ -34,42 +39,47 @@ func (r *CategoryCacheRepository) Upsert(ctx context.Context, categories []trans
 }
 
 func (r *CategoryCacheRepository) List(ctx context.Context) ([]transaction.Category, error) {
-	rows, err := r.db.Query(ctx, `SELECT category_id, title, type, refreshed_at FROM money_tracker_categories_cache`)
+	var list []CategoryCache
+	err := r.db.WithContext(ctx).Find(&list).Error
 	if err != nil {
 		return nil, fmt.Errorf("category cache list: %w", err)
 	}
-	defer rows.Close()
 
-	var cats []transaction.Category
-	for rows.Next() {
-		var c transaction.Category
-		if err := rows.Scan(&c.CategoryID, &c.Title, &c.Type, &c.RefreshedAt); err != nil {
-			return nil, err
+	cats := make([]transaction.Category, len(list))
+	for i, c := range list {
+		cats[i] = transaction.Category{
+			CategoryID:  c.CategoryID,
+			Title:       c.Title,
+			Type:        c.Type,
+			RefreshedAt: c.RefreshedAt,
 		}
-		cats = append(cats, c)
 	}
-	return cats, rows.Err()
+	return cats, nil
 }
 
 var _ transaction.CategoryCacheRepository = (*CategoryCacheRepository)(nil)
 
 type AccountCacheRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewAccountCacheRepository(db *pgxpool.Pool) *AccountCacheRepository {
+func NewAccountCacheRepository(db *gorm.DB) *AccountCacheRepository {
 	return &AccountCacheRepository{db: db}
 }
 
 func (r *AccountCacheRepository) Upsert(ctx context.Context, accounts []transaction.Account) error {
 	now := time.Now()
 	for _, acc := range accounts {
-		_, err := r.db.Exec(ctx, `
-			INSERT INTO money_tracker_accounts_cache (account_id, name, currency_code, refreshed_at)
-			VALUES ($1,$2,$3,$4)
-			ON CONFLICT (account_id) DO UPDATE SET name=EXCLUDED.name, currency_code=EXCLUDED.currency_code, refreshed_at=EXCLUDED.refreshed_at`,
-			acc.AccountID, acc.Name, acc.CurrencyCode, now,
-		)
+		cache := AccountCache{
+			AccountID:    acc.AccountID,
+			Name:         acc.Name,
+			CurrencyCode: acc.CurrencyCode,
+			RefreshedAt:  now,
+		}
+		err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "account_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"name", "currency_code", "refreshed_at"}),
+		}).Create(&cache).Error
 		if err != nil {
 			return fmt.Errorf("account cache upsert: %w", err)
 		}
@@ -78,21 +88,22 @@ func (r *AccountCacheRepository) Upsert(ctx context.Context, accounts []transact
 }
 
 func (r *AccountCacheRepository) List(ctx context.Context) ([]transaction.Account, error) {
-	rows, err := r.db.Query(ctx, `SELECT account_id, name, currency_code, refreshed_at FROM money_tracker_accounts_cache`)
+	var list []AccountCache
+	err := r.db.WithContext(ctx).Find(&list).Error
 	if err != nil {
 		return nil, fmt.Errorf("account cache list: %w", err)
 	}
-	defer rows.Close()
 
-	var accounts []transaction.Account
-	for rows.Next() {
-		var a transaction.Account
-		if err := rows.Scan(&a.AccountID, &a.Name, &a.CurrencyCode, &a.RefreshedAt); err != nil {
-			return nil, err
+	accounts := make([]transaction.Account, len(list))
+	for i, a := range list {
+		accounts[i] = transaction.Account{
+			AccountID:    a.AccountID,
+			Name:         a.Name,
+			CurrencyCode: a.CurrencyCode,
+			RefreshedAt:  a.RefreshedAt,
 		}
-		accounts = append(accounts, a)
 	}
-	return accounts, rows.Err()
+	return accounts, nil
 }
 
 var _ transaction.AccountCacheRepository = (*AccountCacheRepository)(nil)

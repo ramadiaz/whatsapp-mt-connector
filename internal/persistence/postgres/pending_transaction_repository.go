@@ -2,86 +2,106 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
 	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
+	"gorm.io/gorm"
 )
 
 type PendingTransactionRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewPendingTransactionRepository(db *pgxpool.Pool) *PendingTransactionRepository {
+func NewPendingTransactionRepository(db *gorm.DB) *PendingTransactionRepository {
 	return &PendingTransactionRepository{db: db}
 }
 
 func (r *PendingTransactionRepository) Insert(ctx context.Context, pt *transaction.PendingTransactionInsert) (int64, error) {
+	amount, err := decimal.NewFromString(pt.Amount)
+	if err != nil {
+		return 0, fmt.Errorf("invalid amount decimal: %w", err)
+	}
+
 	expiresAt := time.Now().Add(15 * time.Minute)
-	var id int64
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO pending_transactions
-			(chat_id, source_message_id, type, amount, currency_code, category_hint, category_id,
-			 account_hint, account_id, transaction_date, remark, confidence, status, expires_at, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$14)
-		RETURNING id`,
-		pt.ChatID, pt.SourceMessageID, pt.Type, pt.Amount, pt.CurrencyCode,
-		pt.CategoryHint, pt.CategoryID, pt.AccountHint, pt.AccountID,
-		pt.TransactionDate, pt.Remark, pt.Confidence, expiresAt, time.Now(),
-	).Scan(&id)
+	pending := PendingTransaction{
+		ChatID:          pt.ChatID,
+		SourceMessageID: pt.SourceMessageID,
+		Type:            pt.Type,
+		Amount:          amount,
+		CurrencyCode:    pt.CurrencyCode,
+		CategoryHint:    pt.CategoryHint,
+		CategoryID:      pt.CategoryID,
+		AccountHint:     pt.AccountHint,
+		AccountID:       pt.AccountID,
+		TransactionDate: pt.TransactionDate,
+		Remark:          pt.Remark,
+		Confidence:      pt.Confidence,
+		Status:          "pending",
+		ExpiresAt:       expiresAt,
+		CreatedAt:       time.Now(),
+	}
+
+	err = r.db.WithContext(ctx).Create(&pending).Error
 	if err != nil {
 		return 0, fmt.Errorf("pending tx insert: %w", err)
 	}
-	return id, nil
+	return pending.ID, nil
 }
 
 func (r *PendingTransactionRepository) FindActiveByChat(ctx context.Context, chatID string) (*transaction.PendingTransactionRow, error) {
-	row := &transaction.PendingTransactionRow{}
-	err := r.db.QueryRow(ctx, `
-		SELECT id, chat_id, source_message_id, type, amount, currency_code,
-		       category_hint, category_id, account_hint, account_id,
-		       transaction_date, remark, confidence, status, expires_at
-		FROM pending_transactions
-		WHERE chat_id=$1 AND status='pending' AND expires_at > NOW()
-		ORDER BY created_at DESC
-		LIMIT 1`, chatID,
-	).Scan(
-		&row.ID, &row.ChatID, &row.SourceMessageID, &row.Type, &row.Amount, &row.CurrencyCode,
-		&row.CategoryHint, &row.CategoryID, &row.AccountHint, &row.AccountID,
-		&row.TransactionDate, &row.Remark, &row.Confidence, &row.Status, &row.ExpiresAt,
-	)
+	var pt PendingTransaction
+	err := r.db.WithContext(ctx).
+		Where("chat_id = ? AND status = ? AND expires_at > ?", chatID, "pending", time.Now()).
+		Order("created_at DESC").
+		First(&pt).Error
 	if err != nil {
-		if isNoRows(err) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.ErrNoPendingTransaction
 		}
 		return nil, fmt.Errorf("pending tx find: %w", err)
 	}
-	return row, nil
+
+	return &transaction.PendingTransactionRow{
+		ID:              pt.ID,
+		ChatID:          pt.ChatID,
+		SourceMessageID: pt.SourceMessageID,
+		Type:            pt.Type,
+		Amount:          pt.Amount.String(),
+		CurrencyCode:    pt.CurrencyCode,
+		CategoryHint:    pt.CategoryHint,
+		CategoryID:      pt.CategoryID,
+		AccountHint:     pt.AccountHint,
+		AccountID:       pt.AccountID,
+		TransactionDate: pt.TransactionDate,
+		Remark:          pt.Remark,
+		Confidence:      pt.Confidence,
+		Status:          pt.Status,
+		ExpiresAt:       pt.ExpiresAt.Format(time.RFC3339),
+	}, nil
 }
 
 func (r *PendingTransactionRepository) MarkConfirmed(ctx context.Context, id int64) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE pending_transactions SET status='confirmed', confirmed_at=$1 WHERE id=$2`,
-		time.Now(), id,
-	)
-	return err
+	return r.db.WithContext(ctx).Model(&PendingTransaction{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":       "confirmed",
+		"confirmed_at": time.Now(),
+	}).Error
 }
 
 func (r *PendingTransactionRepository) MarkCancelled(ctx context.Context, id int64) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE pending_transactions SET status='cancelled', cancelled_at=$1 WHERE id=$2`,
-		time.Now(), id,
-	)
-	return err
+	return r.db.WithContext(ctx).Model(&PendingTransaction{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":       "cancelled",
+		"cancelled_at": time.Now(),
+	}).Error
 }
 
 func (r *PendingTransactionRepository) ExpireStale(ctx context.Context) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE pending_transactions SET status='expired' WHERE status='pending' AND expires_at <= NOW()`,
-	)
-	return err
+	return r.db.WithContext(ctx).Model(&PendingTransaction{}).
+		Where("status = ? AND expires_at <= ?", "pending", time.Now()).
+		Update("status", "expired").Error
 }
 
 var _ transaction.PendingTransactionRepository = (*PendingTransactionRepository)(nil)

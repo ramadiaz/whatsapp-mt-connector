@@ -5,52 +5,52 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
+	"gorm.io/gorm"
 )
 
 type SubmissionRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewSubmissionRepository(db *pgxpool.Pool) *SubmissionRepository {
+func NewSubmissionRepository(db *gorm.DB) *SubmissionRepository {
 	return &SubmissionRepository{db: db}
 }
 
 func (r *SubmissionRepository) Insert(ctx context.Context, s *transaction.SubmissionInsert) (int64, error) {
-	var id int64
 	now := time.Now()
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO transaction_submissions
-			(pending_transaction_id, request_snapshot_json, status, attempt_count, created_at, updated_at)
-		VALUES ($1,$2,'pending',1,$3,$4)
-		RETURNING id`,
-		s.PendingTransactionID, s.RequestSnapshotJSON, now, now,
-	).Scan(&id)
+	sub := TransactionSubmission{
+		PendingTransactionID: s.PendingTransactionID,
+		RequestSnapshotJSON:  s.RequestSnapshotJSON,
+		Status:               "pending",
+		AttemptCount:         1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+
+	err := r.db.WithContext(ctx).Create(&sub).Error
 	if err != nil {
 		return 0, fmt.Errorf("submission insert: %w", err)
 	}
-	return id, nil
+	return sub.ID, nil
 }
 
 func (r *SubmissionRepository) UpdateSuccess(ctx context.Context, id int64, mtTxID, responseJSON string) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE transaction_submissions
-		SET status='succeeded', money_tracker_transaction_id=$1, response_snapshot_json=$2, updated_at=$3
-		WHERE id=$4`,
-		mtTxID, responseJSON, time.Now(), id,
-	)
-	return err
+	return r.db.WithContext(ctx).Model(&TransactionSubmission{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":                       "succeeded",
+		"money_tracker_transaction_id": mtTxID,
+		"response_snapshot_json":       responseJSON,
+		"updated_at":                   time.Now(),
+	}).Error
 }
 
 func (r *SubmissionRepository) UpdateFailed(ctx context.Context, id int64, errMsg string) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE transaction_submissions
-		SET status='failed', last_error=$1, attempt_count=attempt_count+1, updated_at=$2
-		WHERE id=$3`,
-		errMsg, time.Now(), id,
-	)
-	return err
+	return r.db.WithContext(ctx).Model(&TransactionSubmission{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":        "failed",
+		"last_error":    errMsg,
+		"attempt_count": gorm.Expr("attempt_count + 1"),
+		"updated_at":    time.Now(),
+	}).Error
 }
 
 var _ transaction.SubmissionRepository = (*SubmissionRepository)(nil)
