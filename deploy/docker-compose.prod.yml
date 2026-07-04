@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  money-wa-bot:
+    image: money-wa-bot:${APP_VERSION:-latest}
+    restart: unless-stopped
+    env_file: ../.env
+    ports:
+      - "8080:8080"
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
