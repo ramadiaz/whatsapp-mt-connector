@@ -30,7 +30,10 @@ type Config struct {
 	AppTimezone string
 
 	DatabaseURL string
-	RedisURL    string
+	RedisHost     string
+	RedisPort     string
+	RedisPassword string
+	RedisDB       int
 
 	ConfirmationMode       string
 	AutoCommitMinConfidence float64
@@ -62,7 +65,10 @@ func Load() (*Config, error) {
 		AppTimezone: getEnv("APP_TIMEZONE", "Asia/Jakarta"),
 
 		DatabaseURL: mustGet("DATABASE_URL"),
-		RedisURL:    mustGet("REDIS_URL"),
+		RedisHost:     mustGet("REDIS_HOST"),
+		RedisPort:     mustGet("REDIS_PORT"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+		RedisDB:       parseInt(getEnv("REDIS_DB", "0")),
 
 		ConfirmationMode:        getEnv("CONFIRMATION_MODE", "always"),
 		AutoCommitMinConfidence: parseFloat(getEnv("AUTO_COMMIT_MIN_CONFIDENCE", "0.98")),

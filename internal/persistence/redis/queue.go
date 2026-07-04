@@ -10,13 +10,21 @@ const (
 	QueueLow      = "low"
 )
 
-func NewAsynqClient(redisURL string) *asynq.Client {
-	return asynq.NewClient(asynq.RedisClientOpt{Addr: parseRedisAddr(redisURL)})
+func NewAsynqClient(host, port, password string, db int) *asynq.Client {
+	return asynq.NewClient(asynq.RedisClientOpt{
+		Addr:     host + ":" + port,
+		Password: password,
+		DB:       db,
+	})
 }
 
-func NewAsynqServer(redisURL string) *asynq.Server {
+func NewAsynqServer(host, port, password string, db int) *asynq.Server {
 	return asynq.NewServer(
-		asynq.RedisClientOpt{Addr: parseRedisAddr(redisURL)},
+		asynq.RedisClientOpt{
+			Addr:     host + ":" + port,
+			Password: password,
+			DB:       db,
+		},
 		asynq.Config{
 			Concurrency: 10,
 			Queues: map[string]int{
@@ -28,16 +36,14 @@ func NewAsynqServer(redisURL string) *asynq.Server {
 	)
 }
 
-func NewAsynqScheduler(redisURL string) *asynq.Scheduler {
+func NewAsynqScheduler(host, port, password string, db int) *asynq.Scheduler {
 	return asynq.NewScheduler(
-		asynq.RedisClientOpt{Addr: parseRedisAddr(redisURL)},
+		asynq.RedisClientOpt{
+			Addr:     host + ":" + port,
+			Password: password,
+			DB:       db,
+		},
 		nil,
 	)
 }
 
-func parseRedisAddr(redisURL string) string {
-	if len(redisURL) > 8 && redisURL[:8] == "redis://" {
-		return redisURL[8:]
-	}
-	return redisURL
-}

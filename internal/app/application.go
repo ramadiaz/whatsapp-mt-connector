@@ -90,8 +90,8 @@ func Run() error {
 	catCacheRepo := postgres.NewCategoryCacheRepository(db)
 	accCacheRepo := postgres.NewAccountCacheRepository(db)
 
-	log.Info().Str("url", cfg.RedisURL).Msg("connecting to redis asynq client")
-	asynqClient := redisqueue.NewAsynqClient(cfg.RedisURL)
+	log.Info().Str("host", cfg.RedisHost).Str("port", cfg.RedisPort).Msg("connecting to redis asynq client")
+	asynqClient := redisqueue.NewAsynqClient(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	defer asynqClient.Close()
 
 	webhookSvc := service.NewWebhookService(cfg.GOWAWebhookSecret, cfg.AllowedNumbers, cfg.GOWADeviceID, inboundRepo, asynqClient)
@@ -102,13 +102,13 @@ func Run() error {
 	processHandler := jobs.NewProcessMessageHandler(inboundRepo, parserSvc, txSvc, confirmationSvc, gowaClient, cfg.GOWADeviceID)
 	refreshHandler := jobs.NewRefreshMTCacheHandler(mtClient, catCacheRepo, accCacheRepo)
 
-	asynqServer := redisqueue.NewAsynqServer(cfg.RedisURL)
+	asynqServer := redisqueue.NewAsynqServer(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(jobs.TypeProcessMessage, processHandler.ProcessTask)
 	mux.HandleFunc(jobs.TypeRefreshMTCache, refreshHandler.ProcessTask)
 
 	log.Info().Msg("registering cache refresh schedule")
-	scheduler := redisqueue.NewAsynqScheduler(cfg.RedisURL)
+	scheduler := redisqueue.NewAsynqScheduler(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	ttl := fmt.Sprintf("@every %dm", cfg.MTCacheTTLMinutes)
 	_, err = scheduler.Register(ttl, jobs.NewRefreshCacheTask())
 	if err != nil {
