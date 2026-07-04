@@ -91,9 +91,12 @@ func (c *Client) Complete(ctx context.Context, model, systemPrompt string, userM
 	messages = append(messages, userMessages...)
 
 	body := map[string]interface{}{
-		"model":      model,
-		"messages":   messages,
-		"max_tokens": maxTokens,
+		"model":    model,
+		"messages": messages,
+		"stream":   false,
+	}
+	if maxTokens > 0 {
+		body["max_tokens"] = maxTokens
 	}
 
 	b, _ := json.Marshal(body)

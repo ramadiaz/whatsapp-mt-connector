@@ -52,8 +52,8 @@ type TransactionSubmission struct {
 	ID                        int64      `gorm:"primaryKey;column:id"`
 	PendingTransactionID      int64      `gorm:"column:pending_transaction_id;index:idx_submission_pending_id"`
 	MoneyTrackerTransactionID string     `gorm:"column:money_tracker_transaction_id"`
-	RequestSnapshotJSON       string     `gorm:"column:request_snapshot_json;type:jsonb"`
-	ResponseSnapshotJSON      string     `gorm:"column:response_snapshot_json;type:jsonb"`
+	RequestSnapshotJSON       *string    `gorm:"column:request_snapshot_json;type:jsonb"`
+	ResponseSnapshotJSON      *string    `gorm:"column:response_snapshot_json;type:jsonb"`
 	Status                    string     `gorm:"column:status;default:pending;index:idx_submission_status"`
 	AttemptCount              int        `gorm:"column:attempt_count;default:1"`
 	LastError                 string     `gorm:"column:last_error"`

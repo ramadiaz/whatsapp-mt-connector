@@ -21,7 +21,7 @@ func (r *SubmissionRepository) Insert(ctx context.Context, s *transaction.Submis
 	now := time.Now()
 	sub := TransactionSubmission{
 		PendingTransactionID: s.PendingTransactionID,
-		RequestSnapshotJSON:  s.RequestSnapshotJSON,
+		RequestSnapshotJSON:  &s.RequestSnapshotJSON,
 		Status:               "pending",
 		AttemptCount:         1,
 		CreatedAt:            now,

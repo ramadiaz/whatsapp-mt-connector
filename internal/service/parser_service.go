@@ -136,7 +136,7 @@ func (s *ParserService) callAI(ctx context.Context, model, systemPrompt string, 
 	var lastErr error
 	for attempt := 0; attempt <= s.maxRetries; attempt++ {
 		logger.Log.Info().Str("model", model).Int("attempt", attempt).Msg("calling ninerouter AI completion API")
-		raw, err := s.nineRouter.Complete(ctx, model, systemPrompt, messages, 512)
+		raw, err := s.nineRouter.Complete(ctx, model, systemPrompt, messages, 0)
 		if err != nil {
 			logger.Log.Warn().Err(err).Int("attempt", attempt).Msg("ninerouter AI completion API call failed, retrying")
 			lastErr = fmt.Errorf("%w: %s", apperrors.ErrAIUnavailable, err.Error())

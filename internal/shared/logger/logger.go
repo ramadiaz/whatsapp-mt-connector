@@ -9,12 +9,7 @@ import (
 var Log zerolog.Logger
 
 func Init(env string) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	if env != "production" {
-		Log = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Caller().Logger()
-		return
-	}
-	Log = zerolog.New(os.Stdout).With().Timestamp().Logger()
+	Log = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "2006-01-02 15:04:05"}).With().Timestamp().Caller().Logger()
 }
 
 func WithCorrelationID(correlationID string) zerolog.Logger {
