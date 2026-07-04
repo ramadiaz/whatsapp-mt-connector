@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hibiken/asynq"
 	"github.com/ramadiaz/money-wa-bot/internal/domain/transaction"
 	"github.com/ramadiaz/money-wa-bot/internal/integration/gowa"
+	"github.com/ramadiaz/money-wa-bot/internal/integration/ninerouter"
 	"github.com/ramadiaz/money-wa-bot/internal/service"
 	apperrors "github.com/ramadiaz/money-wa-bot/internal/shared/errors"
 	"github.com/ramadiaz/money-wa-bot/internal/shared/logger"
@@ -94,6 +96,15 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			return h.handleParseError(ctx, p, err)
 		}
 
+		missing := h.getMissingFields(result)
+		if len(missing) > 0 {
+			log.Info().Interface("missing_fields", missing).Msg("missing crucial transaction fields, prompt verification")
+			msg := fmt.Sprintf("Transaksi belum lengkap. Mohon sertakan %s.", strings.Join(missing, ", "))
+			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
+			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+			return nil
+		}
+
 		log.Info().Msg("image parsed successfully, creating pending transaction record")
 		pendingID, err := h.txSvc.CreatePending(ctx, p.ChatID, p.MessageID, result)
 		if err != nil {
@@ -102,7 +113,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		}
 
 		log.Info().Int64("pending_id", pendingID).Msg("sending confirmation prompt to user")
-		return h.sendConfirmationPrompt(ctx, p, result.Amount, result.CategoryHint, result.Date, result.Remark, p.MessageID)
+		return h.sendConfirmationPrompt(ctx, p, result.Amount, result.Type, result.CategoryHint, result.AccountHint, result.Date, result.Remark, p.MessageID)
 	}
 
 	text := p.Body
@@ -133,9 +144,10 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return nil
 	}
 
-	if len(result.MissingFields) > 0 || result.Amount == nil {
-		log.Info().Interface("missing_fields", result.MissingFields).Msg("missing crucial transaction fields, prompt verification")
-		msg := "Transaksi belum lengkap. Mohon sertakan *jumlah*, *kategori*, dan *tanggal*."
+	missing := h.getMissingFields(result)
+	if len(missing) > 0 {
+		log.Info().Interface("missing_fields", missing).Msg("missing crucial transaction fields, prompt verification")
+		msg := fmt.Sprintf("Transaksi belum lengkap. Mohon sertakan %s.", strings.Join(missing, ", "))
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
@@ -149,7 +161,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	log.Info().Int64("pending_id", pendingID).Msg("sending confirmation prompt to user")
-	if err := h.sendConfirmationPrompt(ctx, p, result.Amount, result.CategoryHint, result.Date, result.Remark, p.MessageID); err != nil {
+	if err := h.sendConfirmationPrompt(ctx, p, result.Amount, result.Type, result.CategoryHint, result.AccountHint, result.Date, result.Remark, p.MessageID); err != nil {
 		log.Error().Err(err).Msg("send confirmation prompt failed")
 	}
 
@@ -181,7 +193,7 @@ func (h *ProcessMessageHandler) handleParseError(ctx context.Context, p ProcessM
 	return nil
 }
 
-func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p ProcessMessagePayload, amountPtr *float64, catHint, datePtr, remarkPtr *string, replyToID string) error {
+func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p ProcessMessagePayload, amountPtr *float64, txType, catHint, accHint, datePtr, remarkPtr *string, replyToID string) error {
 	amount := decimal.Zero
 	if amountPtr != nil {
 		amount = decimal.NewFromFloat(*amountPtr)
@@ -190,6 +202,11 @@ func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p Pr
 	cat := ""
 	if catHint != nil {
 		cat = *catHint
+	}
+
+	acc := ""
+	if accHint != nil {
+		acc = *accHint
 	}
 
 	date := timeutil.TodayJakarta()
@@ -203,11 +220,15 @@ func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p Pr
 	}
 
 	txTypeLabel := "Pengeluaran"
+	if txType != nil && *txType == "income" {
+		txTypeLabel = "Pemasukan"
+	}
 
 	msg := fmt.Sprintf(`Saya baca transaksi berikut:
 
 %s: %s
 Kategori: %s
+Akun: %s
 Tanggal: %s
 Catatan: %s
 
@@ -215,11 +236,32 @@ Balas "ya" untuk simpan atau "batal" untuk membatalkan.`,
 		txTypeLabel,
 		money.FormatRupiah(amount),
 		cat,
+		acc,
 		date,
 		remark,
 	)
 
 	return h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, replyToID)
+}
+
+func (h *ProcessMessageHandler) getMissingFields(result *ninerouter.AIExtractionResult) []string {
+	var missing []string
+	if result.Amount == nil || *result.Amount <= 0 {
+		missing = append(missing, "*jumlah*")
+	}
+	if result.CategoryHint == nil || *result.CategoryHint == "" {
+		missing = append(missing, "*kategori*")
+	}
+	if result.AccountHint == nil || *result.AccountHint == "" {
+		missing = append(missing, "*akun*")
+	}
+	if result.Date == nil || *result.Date == "" {
+		missing = append(missing, "*tanggal*")
+	}
+	if result.Remark == nil || *result.Remark == "" {
+		missing = append(missing, "*catatan*")
+	}
+	return missing
 }
 
 func helpText() string {
