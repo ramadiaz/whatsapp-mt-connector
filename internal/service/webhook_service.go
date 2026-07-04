@@ -55,30 +55,33 @@ func (s *WebhookService) VerifySignature(signature string, body []byte) bool {
 
 func (s *WebhookService) Handle(ctx context.Context, correlationID string, body []byte) error {
 	log := logger.WithCorrelationID(correlationID)
+	log.Debug().Msg("parsing webhook event json payload")
 
 	var event gowa.WebhookEvent
 	if err := json.Unmarshal(body, &event); err != nil {
+		log.Error().Err(err).Msg("unmarshal webhook event payload failed")
 		return apperrors.ErrInvalidAIResponse
 	}
 
 	if event.Event != "message" {
-		log.Debug().Str("event", event.Event).Msg("ignored non-message event")
+		log.Debug().Str("event", event.Event).Msg("ignored non-message event type")
 		return nil
 	}
 
 	if event.Payload.IsFromMe {
-		log.Debug().Msg("ignored is_from_me message")
+		log.Debug().Str("message_id", event.Payload.ID).Msg("ignored outgoing message from current device")
 		return nil
 	}
 
 	if event.Payload.IsGroup {
-		log.Debug().Msg("ignored group message")
+		log.Debug().Str("message_id", event.Payload.ID).Msg("ignored incoming group message")
 		return nil
 	}
 
 	senderNumber := gowa.NormalizeSenderJID(event.Payload.From)
+	log.Info().Str("sender", senderNumber).Str("message_id", event.Payload.ID).Msg("verifying sender authorization")
 	if !s.isAllowed(senderNumber) {
-		log.Warn().Str("sender", senderNumber).Msg("unauthorized sender ignored")
+		log.Warn().Str("sender", senderNumber).Msg("sender phone number is not on authorized list")
 		return apperrors.ErrUnauthorizedSender
 	}
 
@@ -89,22 +92,25 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 		msgType = inbound.MessageTypeOther
 	}
 
+	log.Info().Str("type", string(msgType)).Msg("categorizing inbound message type")
 	if msgType == inbound.MessageTypeOther {
-		log.Debug().Str("type", event.Payload.Type).Msg("unsupported message type ignored")
+		log.Debug().Str("type", event.Payload.Type).Msg("ignoring unsupported message payload format")
 		return apperrors.ErrUnsupportedMessageType
 	}
 
 	rawJSON, _ := json.Marshal(event.Payload)
+	log.Info().Str("message_id", event.Payload.ID).Msg("inserting inbound message into database")
 	id, err := s.inboundRepo.Insert(ctx, s.deviceID, event.Payload.ID, event.Payload.ChatID, senderNumber, string(msgType), string(rawJSON))
 	if err != nil {
 		if errors.Is(err, apperrors.ErrDuplicateMessage) {
-			log.Warn().Str("message_id", event.Payload.ID).Msg("duplicate message ignored")
+			log.Warn().Str("message_id", event.Payload.ID).Msg("duplicate message received and ignored")
 			return nil
 		}
+		log.Error().Err(err).Msg("failed database insertion of inbound message")
 		return err
 	}
 
-	log.Info().Int64("inbound_id", id).Str("type", string(msgType)).Msg("enqueuing message")
+	log.Info().Int64("inbound_id", id).Str("type", string(msgType)).Msg("enqueuing message processing task to queue")
 
 	payload, _ := json.Marshal(map[string]interface{}{
 		"inbound_id":    id,
@@ -121,9 +127,11 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 	task := asynq.NewTask("process:message", payload, asynq.Queue("default"))
 	_, err = s.asynqClient.EnqueueContext(ctx, task)
 	if err != nil {
+		log.Error().Err(err).Int64("inbound_id", id).Msg("enqueuing process task failed")
 		return fmt.Errorf("enqueue message: %w", err)
 	}
 
+	log.Info().Int64("inbound_id", id).Msg("enqueued process task successfully")
 	return nil
 }
 

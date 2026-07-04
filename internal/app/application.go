@@ -37,6 +37,10 @@ func Run() error {
 	logger.Init(cfg.AppEnv)
 	log := logger.Log
 
+	log.Info().Msg("starting money-wa-bot application")
+	log.Info().Str("env", cfg.AppEnv).Msg("loading configurations")
+
+	log.Info().Str("dsn", cfg.DatabaseURL).Msg("connecting to postgres via gorm")
 	db, err := gorm.Open(gormpostgres.Open(cfg.DatabaseURL), &gorm.Config{})
 	if err != nil {
 		return fmt.Errorf("connect postgres: %w", err)
@@ -48,10 +52,12 @@ func Run() error {
 	}
 	defer sqlDB.Close()
 
+	log.Info().Msg("pinging database connection")
 	if err := sqlDB.Ping(); err != nil {
 		return fmt.Errorf("ping postgres: %w", err)
 	}
 
+	log.Info().Msg("running database auto migration")
 	err = db.AutoMigrate(
 		&postgres.InboundMessage{},
 		&postgres.PendingTransaction{},
@@ -62,12 +68,16 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
+	log.Info().Msg("database auto migration successful")
 
+	log.Info().Str("host", cfg.GOWAHost).Msg("initializing gowa client")
 	gowaTimeout := time.Duration(cfg.AITimeoutSeconds) * time.Second
 	gowaClient := gowaintegration.NewClient(cfg.GOWAHost, cfg.GOWAUsername, cfg.GOWAPassword, gowaTimeout)
 
+	log.Info().Str("host", cfg.MTHost).Msg("initializing moneytracker client")
 	mtClient := moneytracker.NewClient(cfg.MTHost, cfg.MTAPIKey, 30*time.Second)
 
+	log.Info().Str("endpoint", cfg.NineRouterEndpoint).Str("model", cfg.NineRouterModel).Msg("initializing 9router client")
 	aiTimeout := time.Duration(cfg.AITimeoutSeconds) * time.Second
 	nineClient, err := ninerouter.NewClient(cfg.NineRouterEndpoint, cfg.NineRouterAPIKey, cfg.NineRouterModel, cfg.NineRouterVisionModel, aiTimeout)
 	if err != nil {
@@ -80,6 +90,7 @@ func Run() error {
 	catCacheRepo := postgres.NewCategoryCacheRepository(db)
 	accCacheRepo := postgres.NewAccountCacheRepository(db)
 
+	log.Info().Str("url", cfg.RedisURL).Msg("connecting to redis asynq client")
 	asynqClient := redisqueue.NewAsynqClient(cfg.RedisURL)
 	defer asynqClient.Close()
 
@@ -96,6 +107,7 @@ func Run() error {
 	mux.HandleFunc(jobs.TypeProcessMessage, processHandler.ProcessTask)
 	mux.HandleFunc(jobs.TypeRefreshMTCache, refreshHandler.ProcessTask)
 
+	log.Info().Msg("registering cache refresh schedule")
 	scheduler := redisqueue.NewAsynqScheduler(cfg.RedisURL)
 	ttl := fmt.Sprintf("@every %dm", cfg.MTCacheTTLMinutes)
 	_, err = scheduler.Register(ttl, jobs.NewRefreshCacheTask())
@@ -103,8 +115,11 @@ func Run() error {
 		log.Warn().Err(err).Msg("register scheduler")
 	}
 
+	log.Info().Msg("triggering initial mt cache refresh")
 	if err := refreshHandler.ProcessTask(context.Background(), nil); err != nil {
 		log.Warn().Err(err).Msg("initial cache refresh failed")
+	} else {
+		log.Info().Msg("initial mt cache refresh successful")
 	}
 
 	webhookH := handler.NewWebhookHandler(webhookSvc)
@@ -146,7 +161,7 @@ func Run() error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Info().Msg("shutting down")
+	log.Info().Msg("shutting down application")
 
 	shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -154,5 +169,6 @@ func Run() error {
 	asynqServer.Shutdown()
 	scheduler.Shutdown()
 
+	log.Info().Msg("graceful shutdown completed")
 	return srv.Shutdown(shutCtx)
 }

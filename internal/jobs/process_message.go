@@ -65,43 +65,51 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	log := logger.WithCorrelationID(p.CorrelationID)
+	log.Info().Int64("inbound_id", p.InboundID).Str("type", p.Type).Msg("processing inbound message task")
+
 	_ = h.inboundRepo.MarkProcessing(ctx, p.InboundID)
 
+	log.Debug().Str("body", p.Body).Msg("checking if text is confirmation command")
 	if h.confirmationSvc.IsConfirmationCommand(p.Body) {
+		log.Info().Str("command", p.Body).Msg("confirmation command detected, invoking confirmation handler")
 		err := h.confirmationSvc.Handle(ctx, p.ChatID, p.Body, p.MessageID, p.CorrelationID)
 		if err != nil {
-			log.Error().Err(err).Msg("confirmation handle failed")
+			log.Error().Err(err).Msg("confirmation handling failed")
 			_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
 			return err
 		}
+		log.Info().Msg("confirmation command processed successfully")
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
 	}
 
-	var aiResult interface{ GetCategoryHint() *string }
 	var parseErr error
 
 	if p.Type == "image" {
+		log.Info().Str("message_id", p.MessageID).Msg("image message detected, parsing image media payload")
 		phone := p.SenderNumber + "@s.whatsapp.net"
 		result, err := h.parserSvc.ParseImage(ctx, p.MessageID, phone, p.Caption)
 		if err != nil {
+			log.Error().Err(err).Msg("parsing image media payload failed")
 			return h.handleParseError(ctx, p, err)
 		}
-		aiResult = nil
-		_ = aiResult
 
+		log.Info().Msg("image parsed successfully, creating pending transaction record")
 		pendingID, err := h.txSvc.CreatePending(ctx, p.ChatID, p.MessageID, result)
 		if err != nil {
+			log.Error().Err(err).Msg("creating pending transaction record from image failed")
 			return h.handleParseError(ctx, p, err)
 		}
 
-		_ = pendingID
+		log.Info().Int64("pending_id", pendingID).Msg("sending confirmation prompt to user")
 		return h.sendConfirmationPrompt(ctx, p, result.Amount, result.CategoryHint, result.Date, result.Remark, p.MessageID)
 	}
 
 	text := p.Body
+	log.Info().Str("text", text).Msg("parsing text message payload")
 	result, err := h.parserSvc.ParseText(ctx, text)
 	if err != nil {
+		log.Error().Err(err).Msg("parsing text message payload failed")
 		parseErr = err
 	}
 
@@ -109,13 +117,16 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return h.handleParseError(ctx, p, parseErr)
 	}
 
+	log.Info().Str("intent", result.Intent).Msg("checking extracted intent result")
 	if result.Intent == "help" {
+		log.Info().Msg("intent help detected, sending help text")
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, helpText(), p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
 	}
 
 	if result.Intent == "clarification" || result.Intent == "unsupported" {
+		log.Info().Str("intent", result.Intent).Msg("intent clarification or unsupported detected, sending retry format prompt")
 		msg := "Maaf, saya tidak mengerti. Coba format: *catat kopi 25k* atau ketik *bantuan* untuk panduan."
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
@@ -123,26 +134,34 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	if len(result.MissingFields) > 0 || result.Amount == nil {
+		log.Info().Interface("missing_fields", result.MissingFields).Msg("missing crucial transaction fields, prompt verification")
 		msg := "Transaksi belum lengkap. Mohon sertakan *jumlah*, *kategori*, dan *tanggal*."
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
 	}
 
-	_, err = h.txSvc.CreatePending(ctx, p.ChatID, p.MessageID, result)
+	log.Info().Msg("creating pending transaction from parsed text")
+	pendingID, err := h.txSvc.CreatePending(ctx, p.ChatID, p.MessageID, result)
 	if err != nil {
+		log.Error().Err(err).Msg("creating pending transaction from parsed text failed")
 		return h.handleParseError(ctx, p, err)
 	}
 
+	log.Info().Int64("pending_id", pendingID).Msg("sending confirmation prompt to user")
 	if err := h.sendConfirmationPrompt(ctx, p, result.Amount, result.CategoryHint, result.Date, result.Remark, p.MessageID); err != nil {
-		log.Error().Err(err).Msg("send confirmation failed")
+		log.Error().Err(err).Msg("send confirmation prompt failed")
 	}
 
+	log.Info().Int64("inbound_id", p.InboundID).Msg("completed message processing task successfully")
 	_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 	return nil
 }
 
 func (h *ProcessMessageHandler) handleParseError(ctx context.Context, p ProcessMessagePayload, err error) error {
+	log := logger.WithCorrelationID(p.CorrelationID)
+	log.Warn().Err(err).Msg("error encountered during processing task, sending user notification")
+
 	var msg string
 	switch {
 	case errors.Is(err, apperrors.ErrMediaTooLarge):
