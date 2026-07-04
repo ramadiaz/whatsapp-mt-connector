@@ -15,6 +15,7 @@ type MessagePayload struct {
 	Body      string `json:"body"`
 	Caption   string `json:"caption"`
 	MediaType string `json:"media_type"`
+	Image     any    `json:"image"`
 	IsGroup   bool   `json:"is_group"`
 }
 

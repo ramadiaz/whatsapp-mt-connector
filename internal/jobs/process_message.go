@@ -90,7 +90,11 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	if p.Type == "image" {
 		log.Info().Str("message_id", p.MessageID).Msg("image message detected, parsing image media payload")
 		phone := p.SenderNumber + "@s.whatsapp.net"
-		result, err := h.parserSvc.ParseImage(ctx, p.MessageID, phone, p.Caption)
+		caption := p.Caption
+		if caption == "" {
+			caption = p.Body
+		}
+		result, err := h.parserSvc.ParseImage(ctx, p.MessageID, phone, caption)
 		if err != nil {
 			log.Error().Err(err).Msg("parsing image media payload failed")
 			return h.handleParseError(ctx, p, err)

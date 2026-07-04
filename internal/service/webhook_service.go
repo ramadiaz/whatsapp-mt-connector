@@ -86,7 +86,7 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 	}
 
 	msgType := inbound.MessageTypeText
-	if event.Payload.MediaType == "image" {
+	if event.Payload.MediaType == "image" || event.Payload.Image != nil {
 		msgType = inbound.MessageTypeImage
 	} else if event.Payload.Type != "text" && event.Payload.MediaType != "" {
 		msgType = inbound.MessageTypeOther
