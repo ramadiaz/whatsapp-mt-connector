@@ -17,6 +17,7 @@ type MoneyTrackerClient interface {
 	GetCategories(ctx context.Context) ([]transaction.Category, error)
 	GetAccounts(ctx context.Context) ([]transaction.Account, error)
 	AddTransaction(ctx context.Context, req transaction.CreateTransactionRequest) (*transaction.CreatedTransaction, error)
+	GetTransactions(ctx context.Context, limit int) ([]transaction.MTTransaction, error)
 }
 
 type mtResponse struct {

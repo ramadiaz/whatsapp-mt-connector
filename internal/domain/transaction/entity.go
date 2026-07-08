@@ -61,3 +61,10 @@ type Account struct {
 	CurrencyCode string
 	RefreshedAt  time.Time
 }
+
+type MTTransaction struct {
+	ID                          string
+	Type                        int
+	IncomeExpenditureCategoryID string
+	Remark                      string
+}

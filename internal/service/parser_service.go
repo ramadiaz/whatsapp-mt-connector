@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/ninerouter"
 	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
@@ -18,6 +21,7 @@ type ParserService struct {
 	nineRouter    *ninerouter.Client
 	catCacheRepo  transaction.CategoryCacheRepository
 	accCacheRepo  transaction.AccountCacheRepository
+	mtClient      moneytracker.MoneyTrackerClient
 	deviceID      string
 	maxMediaBytes int64
 	maxRetries    int
@@ -28,6 +32,7 @@ func NewParserService(
 	nineRouter *ninerouter.Client,
 	catCacheRepo transaction.CategoryCacheRepository,
 	accCacheRepo transaction.AccountCacheRepository,
+	mtClient moneytracker.MoneyTrackerClient,
 	deviceID string,
 	maxMediaBytes int64,
 	maxRetries int,
@@ -37,6 +42,7 @@ func NewParserService(
 		nineRouter:    nineRouter,
 		catCacheRepo:  catCacheRepo,
 		accCacheRepo:  accCacheRepo,
+		mtClient:      mtClient,
 		deviceID:      deviceID,
 		maxMediaBytes: maxMediaBytes,
 		maxRetries:    maxRetries,
@@ -62,7 +68,9 @@ func (s *ParserService) ParseText(ctx context.Context, text string) (*ninerouter
 	catLabels := CategoryLabels(categories)
 	accLabels := AccountLabels(accounts)
 
-	prompt := ninerouter.BuildTextPrompt(text, today, catLabels, accLabels)
+	userContext := s.buildUserContext(ctx, categories)
+
+	prompt := ninerouter.BuildTextPrompt(text, today, catLabels, accLabels, userContext)
 	logger.Log.Debug().Str("text", text).Int("prompt_len", len(prompt)).Msg("prepared AI prompt for text parsing")
 
 	return s.callAI(ctx, s.nineRouter.Model(), prompt, nil)
@@ -102,7 +110,9 @@ func (s *ParserService) ParseImage(ctx context.Context, messageID, phone, captio
 	catLabels := CategoryLabels(categories)
 	accLabels := AccountLabels(accounts)
 
-	prompt := ninerouter.BuildImagePrompt(caption, today, catLabels, accLabels)
+	userContext := s.buildUserContext(ctx, categories)
+
+	prompt := ninerouter.BuildImagePrompt(caption, today, catLabels, accLabels, userContext)
 	logger.Log.Debug().Str("caption", caption).Int("prompt_len", len(prompt)).Msg("prepared AI vision prompt for image parsing")
 
 	b64 := base64.StdEncoding.EncodeToString(imgBytes)
@@ -121,6 +131,71 @@ func (s *ParserService) ParseImage(ctx context.Context, messageID, phone, captio
 	}
 
 	return s.callAI(ctx, s.nineRouter.VisionModel(), prompt, imageContent)
+}
+
+func (s *ParserService) buildUserContext(ctx context.Context, categories []transaction.Category) string {
+	txs, err := s.mtClient.GetTransactions(ctx, 200)
+	if err != nil {
+		logger.Log.Warn().Err(err).Msg("failed to load transactions history for user context")
+		return ""
+	}
+	if len(txs) == 0 {
+		return ""
+	}
+	catMap := make(map[string]string)
+	for _, cat := range categories {
+		catMap[cat.CategoryID] = cat.Title
+	}
+	type remarkCat struct {
+		remark string
+		cat    string
+	}
+	counts := make(map[remarkCat]int)
+	remarkTotal := make(map[string]int)
+	for _, tx := range txs {
+		r := strings.ToLower(strings.TrimSpace(tx.Remark))
+		if r == "" {
+			continue
+		}
+		catTitle := catMap[tx.IncomeExpenditureCategoryID]
+		if catTitle == "" {
+			continue
+		}
+		pair := remarkCat{remark: r, cat: catTitle}
+		counts[pair]++
+		remarkTotal[r]++
+	}
+	bestCat := make(map[string]string)
+	bestCount := make(map[string]int)
+	for pair, count := range counts {
+		if count > bestCount[pair.remark] {
+			bestCount[pair.remark] = count
+			bestCat[pair.remark] = pair.cat
+		}
+	}
+	type remarkFreq struct {
+		remark string
+		freq   int
+	}
+	var freqs []remarkFreq
+	for r, tot := range remarkTotal {
+		freqs = append(freqs, remarkFreq{remark: r, freq: tot})
+	}
+	sort.Slice(freqs, func(i, j int) bool {
+		return freqs[i].freq > freqs[j].freq
+	})
+	limit := 50
+	if len(freqs) < limit {
+		limit = len(freqs)
+	}
+	var sb strings.Builder
+	sb.WriteString("User categorization history/habits:\n")
+	for i := 0; i < limit; i++ {
+		r := freqs[i].remark
+		cat := bestCat[r]
+		sb.WriteString(fmt.Sprintf("- When user mentions \"%s\", categorize it under \"%s\"\n", r, cat))
+	}
+	return sb.String()
 }
 
 func (s *ParserService) callAI(ctx context.Context, model, systemPrompt string, extraMessages []ninerouter.Message) (*ninerouter.AIExtractionResult, error) {

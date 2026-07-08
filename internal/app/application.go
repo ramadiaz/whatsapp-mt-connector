@@ -95,7 +95,7 @@ func Run() error {
 	defer asynqClient.Close()
 
 	webhookSvc := service.NewWebhookService(cfg.GOWAWebhookSecret, cfg.AllowedNumbers, cfg.GOWADeviceID, inboundRepo, asynqClient)
-	parserSvc := service.NewParserService(gowaClient, nineClient, catCacheRepo, accCacheRepo, cfg.GOWADeviceID, cfg.MaxMediaBytes, cfg.MaxAIRetries)
+	parserSvc := service.NewParserService(gowaClient, nineClient, catCacheRepo, accCacheRepo, mtClient, cfg.GOWADeviceID, cfg.MaxMediaBytes, cfg.MaxAIRetries)
 	txSvc := service.NewTransactionService(mtClient, catCacheRepo, accCacheRepo, pendingRepo, submissionRepo)
 	confirmationSvc := service.NewConfirmationService(pendingRepo, txSvc, gowaClient, cfg.GOWADeviceID)
 

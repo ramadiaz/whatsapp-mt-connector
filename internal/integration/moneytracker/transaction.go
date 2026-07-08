@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
@@ -44,4 +45,38 @@ func (c *Client) AddTransaction(ctx context.Context, req transaction.CreateTrans
 	}
 
 	return &transaction.CreatedTransaction{ID: data.ID}, nil
+}
+
+func (c *Client) GetTransactions(ctx context.Context, limit int) ([]transaction.MTTransaction, error) {
+	form := url.Values{}
+	if limit > 0 {
+		form.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	result, err := c.post(ctx, "/getTransactions", form)
+	if err != nil {
+		return nil, fmt.Errorf("moneytracker get transactions: %w", err)
+	}
+	if result.Status != 1 {
+		return nil, fmt.Errorf("moneytracker get transactions: %s", result.Msg)
+	}
+	var raw []struct {
+		ID                          string      `json:"id"`
+		Type                        json.Number `json:"type"`
+		IncomeExpenditureCategoryID string      `json:"income_expenditure_category_id"`
+		Remark                      string      `json:"remark"`
+	}
+	if err := json.Unmarshal(result.Data, &raw); err != nil {
+		return nil, fmt.Errorf("moneytracker get transactions decode: %w", err)
+	}
+	txs := make([]transaction.MTTransaction, len(raw))
+	for i, r := range raw {
+		t, _ := strconv.Atoi(r.Type.String())
+		txs[i] = transaction.MTTransaction{
+			ID:                          r.ID,
+			Type:                        t,
+			IncomeExpenditureCategoryID: r.IncomeExpenditureCategoryID,
+			Remark:                      r.Remark,
+		}
+	}
+	return txs, nil
 }
