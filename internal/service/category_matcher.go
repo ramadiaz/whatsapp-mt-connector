@@ -23,6 +23,20 @@ func MatchCategory(hint string, categories []transaction.Category) *transaction.
 	}
 	hintLower := strings.ToLower(strings.TrimSpace(hint))
 
+	for i := range categories {
+		catTitleLower := strings.ToLower(categories[i].Title)
+		if catTitleLower == hintLower {
+			return &categories[i]
+		}
+	}
+
+	for i := range categories {
+		catTitleLower := strings.ToLower(categories[i].Title)
+		if strings.Contains(catTitleLower, hintLower) || strings.Contains(hintLower, catTitleLower) {
+			return &categories[i]
+		}
+	}
+
 	for canonicalKey, synonyms := range synonymMap {
 		for _, syn := range synonyms {
 			if strings.Contains(hintLower, syn) || hintLower == syn {
@@ -34,12 +48,6 @@ func MatchCategory(hint string, categories []transaction.Category) *transaction.
 				}
 				break
 			}
-		}
-	}
-
-	for i := range categories {
-		if strings.Contains(strings.ToLower(categories[i].Title), hintLower) {
-			return &categories[i]
 		}
 	}
 

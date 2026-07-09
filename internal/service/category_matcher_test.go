@@ -56,3 +56,17 @@ func TestMatchCategory_EmptyHint(t *testing.T) {
 		t.Fatal("expected nil for empty hint")
 	}
 }
+
+func TestMatchCategory_DirectMatchOverridesSynonym(t *testing.T) {
+	cats := []transaction.Category{
+		{CategoryID: "cat-food", Title: "food", Type: 2},
+		{CategoryID: "cat-coffee", Title: "coffee etc", Type: 2},
+	}
+	result := service.MatchCategory("coffee etc", cats)
+	if result == nil {
+		t.Fatal("expected category match, got nil")
+	}
+	if result.CategoryID != "cat-coffee" {
+		t.Errorf("expected cat-coffee, got %q", result.CategoryID)
+	}
+}
