@@ -39,14 +39,14 @@ func NewTransactionService(
 	}
 }
 
-func (s *TransactionService) CreatePending(ctx context.Context, chatID, sourceMessageID string, result *ninerouter.AIExtractionResult) (int64, error) {
+func (s *TransactionService) CreatePending(ctx context.Context, userID int64, chatID, sourceMessageID string, result *ninerouter.AIExtractionResult) (int64, error) {
 	logger.Log.Info().Msg("listing categories for transaction creation match")
-	categories, err := s.catCacheRepo.List(ctx)
+	categories, err := s.catCacheRepo.List(ctx, userID)
 	if err != nil {
 		return 0, err
 	}
 	logger.Log.Info().Msg("listing accounts for transaction creation match")
-	accounts, err := s.accCacheRepo.List(ctx)
+	accounts, err := s.accCacheRepo.List(ctx, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -100,6 +100,7 @@ func (s *TransactionService) CreatePending(ctx context.Context, chatID, sourceMe
 	amount := decimal.NewFromFloat(*result.Amount)
 
 	insert := &transaction.PendingTransactionInsert{
+		UserID:          userID,
 		ChatID:          chatID,
 		SourceMessageID: sourceMessageID,
 		Type:            txType,
@@ -118,7 +119,7 @@ func (s *TransactionService) CreatePending(ctx context.Context, chatID, sourceMe
 	return s.pendingRepo.Insert(ctx, insert)
 }
 
-func (s *TransactionService) Commit(ctx context.Context, pendingID int64, pending *transaction.PendingTransactionRow) (*transaction.CreatedTransaction, error) {
+func (s *TransactionService) Commit(ctx context.Context, pendingID int64, pending *transaction.PendingTransactionRow, mtClient moneytracker.MoneyTrackerClient) (*transaction.CreatedTransaction, error) {
 	logger.Log.Info().Int64("pending_id", pendingID).Msg("committing pending transaction")
 
 	amount, err := decimal.NewFromString(pending.Amount)
@@ -154,7 +155,7 @@ func (s *TransactionService) Commit(ctx context.Context, pendingID int64, pendin
 	}
 
 	logger.Log.Info().Int64("submission_id", subID).Msg("posting transaction payload to money tracker api")
-	created, err := s.mtClient.AddTransaction(ctx, req)
+	created, err := mtClient.AddTransaction(ctx, req)
 	if err != nil {
 		logger.Log.Warn().Err(err).Int64("submission_id", subID).Msg("money tracker api call failed, updating submission to failed")
 		_ = s.submissionRepo.UpdateFailed(ctx, subID, err.Error())

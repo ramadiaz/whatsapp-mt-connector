@@ -79,11 +79,7 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 	}
 
 	senderNumber := gowa.NormalizeSenderJID(event.Payload.From)
-	log.Info().Str("sender", senderNumber).Str("message_id", event.Payload.ID).Msg("verifying sender authorization")
-	if !s.isAllowed(senderNumber) {
-		log.Warn().Str("sender", senderNumber).Msg("sender phone number is not on authorized list")
-		return apperrors.ErrUnauthorizedSender
-	}
+	log.Info().Str("sender", senderNumber).Str("message_id", event.Payload.ID).Msg("processing incoming message")
 
 	msgType := inbound.MessageTypeText
 	if event.Payload.MediaType == "image" || event.Payload.Image != nil {
@@ -133,13 +129,4 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 
 	log.Info().Int64("inbound_id", id).Msg("enqueued process task successfully")
 	return nil
-}
-
-func (s *WebhookService) isAllowed(number string) bool {
-	for _, allowed := range s.allowedNumbers {
-		if number == allowed {
-			return true
-		}
-	}
-	return false
 }

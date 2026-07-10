@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/persistence/postgres"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/service"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 )
@@ -19,16 +22,22 @@ type RetryTransactionPayload struct {
 
 type RetryTransactionHandler struct {
 	pendingRepo transaction.PendingTransactionRepository
+	userRepo    *postgres.UserRepository
 	txSvc       *service.TransactionService
+	mtHost      string
 }
 
 func NewRetryTransactionHandler(
 	pendingRepo transaction.PendingTransactionRepository,
+	userRepo *postgres.UserRepository,
 	txSvc *service.TransactionService,
+	mtHost string,
 ) *RetryTransactionHandler {
 	return &RetryTransactionHandler{
 		pendingRepo: pendingRepo,
+		userRepo:    userRepo,
 		txSvc:       txSvc,
+		mtHost:      mtHost,
 	}
 }
 
@@ -46,7 +55,15 @@ func (h *RetryTransactionHandler) ProcessTask(ctx context.Context, t *asynq.Task
 		return err
 	}
 
-	_, err = h.txSvc.Commit(ctx, pending.ID, pending)
+	user, err := h.userRepo.FindByID(ctx, pending.UserID)
+	if err != nil {
+		log.Error().Err(err).Msg("retry: find user failed")
+		return err
+	}
+
+	mtClient := moneytracker.NewClient(h.mtHost, user.MTAPIKey, 30*time.Second)
+
+	_, err = h.txSvc.Commit(ctx, pending.ID, pending, mtClient)
 	if err != nil {
 		log.Error().Err(err).Msg("retry: commit failed")
 		return err

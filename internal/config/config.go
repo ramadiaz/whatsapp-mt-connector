@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 		MTCacheTTLMinutes:       parseInt(getEnv("MT_CACHE_TTL_MINUTES", "60")),
 	}
 
-	raw := mustGet("WHATSAPP_ALLOWED_NUMBER")
+	raw := mustGet("WHATSAPP_ADMINISTRATOR_NUMBER")
 	for _, n := range strings.Split(raw, ",") {
 		n = strings.TrimSpace(n)
 		if n != "" {
@@ -87,7 +87,7 @@ func Load() (*Config, error) {
 	}
 
 	if len(cfg.AllowedNumbers) == 0 {
-		return nil, fmt.Errorf("WHATSAPP_ALLOWED_NUMBER must not be empty")
+		return nil, fmt.Errorf("WHATSAPP_ADMINISTRATOR_NUMBER must not be empty")
 	}
 
 	return cfg, nil

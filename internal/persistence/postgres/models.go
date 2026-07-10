@@ -6,6 +6,19 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type User struct {
+	ID          int64     `gorm:"primaryKey;column:id"`
+	PhoneNumber string    `gorm:"column:phone_number;uniqueIndex;not null"`
+	Role        string    `gorm:"column:role;default:customer;not null"`
+	MTAPIKey    string    `gorm:"column:mt_api_key"`
+	CreatedAt   time.Time `gorm:"column:created_at;default:now()"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;default:now()"`
+}
+
+func (User) TableName() string {
+	return "users"
+}
+
 type InboundMessage struct {
 	ID             int64     `gorm:"primaryKey;column:id"`
 	GowaDeviceID   string    `gorm:"column:gowa_device_id;uniqueIndex:uq_inbound_device_message"`
@@ -25,6 +38,7 @@ func (InboundMessage) TableName() string {
 
 type PendingTransaction struct {
 	ID              int64           `gorm:"primaryKey;column:id"`
+	UserID          int64           `gorm:"column:user_id;index:idx_pending_user"`
 	ChatID          string          `gorm:"column:chat_id;index:idx_pending_chat_status"`
 	SourceMessageID string          `gorm:"column:source_message_id"`
 	Type            string          `gorm:"column:type"`
@@ -66,6 +80,7 @@ func (TransactionSubmission) TableName() string {
 }
 
 type CategoryCache struct {
+	UserID      int64     `gorm:"primaryKey;column:user_id"`
 	CategoryID  string    `gorm:"primaryKey;column:category_id"`
 	Title       string    `gorm:"column:title"`
 	Type        int       `gorm:"column:type"`
@@ -77,6 +92,7 @@ func (CategoryCache) TableName() string {
 }
 
 type AccountCache struct {
+	UserID       int64     `gorm:"primaryKey;column:user_id"`
 	AccountID    string    `gorm:"primaryKey;column:account_id"`
 	Name         string    `gorm:"column:name"`
 	CurrencyCode string    `gorm:"column:currency_code;default:IDR"`

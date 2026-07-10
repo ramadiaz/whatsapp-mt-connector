@@ -18,17 +18,18 @@ func NewCategoryCacheRepository(db *gorm.DB) *CategoryCacheRepository {
 	return &CategoryCacheRepository{db: db}
 }
 
-func (r *CategoryCacheRepository) Upsert(ctx context.Context, categories []transaction.Category) error {
+func (r *CategoryCacheRepository) Upsert(ctx context.Context, userID int64, categories []transaction.Category) error {
 	now := time.Now()
 	for _, cat := range categories {
 		cache := CategoryCache{
+			UserID:      userID,
 			CategoryID:  cat.CategoryID,
 			Title:       cat.Title,
 			Type:        cat.Type,
 			RefreshedAt: now,
 		}
 		err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "category_id"}},
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "category_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"title", "type", "refreshed_at"}),
 		}).Create(&cache).Error
 		if err != nil {
@@ -38,9 +39,9 @@ func (r *CategoryCacheRepository) Upsert(ctx context.Context, categories []trans
 	return nil
 }
 
-func (r *CategoryCacheRepository) List(ctx context.Context) ([]transaction.Category, error) {
+func (r *CategoryCacheRepository) List(ctx context.Context, userID int64) ([]transaction.Category, error) {
 	var list []CategoryCache
-	err := r.db.WithContext(ctx).Find(&list).Error
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&list).Error
 	if err != nil {
 		return nil, fmt.Errorf("category cache list: %w", err)
 	}
@@ -67,17 +68,18 @@ func NewAccountCacheRepository(db *gorm.DB) *AccountCacheRepository {
 	return &AccountCacheRepository{db: db}
 }
 
-func (r *AccountCacheRepository) Upsert(ctx context.Context, accounts []transaction.Account) error {
+func (r *AccountCacheRepository) Upsert(ctx context.Context, userID int64, accounts []transaction.Account) error {
 	now := time.Now()
 	for _, acc := range accounts {
 		cache := AccountCache{
+			UserID:       userID,
 			AccountID:    acc.AccountID,
 			Name:         acc.Name,
 			CurrencyCode: acc.CurrencyCode,
 			RefreshedAt:  now,
 		}
 		err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "account_id"}},
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "account_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"name", "currency_code", "refreshed_at"}),
 		}).Create(&cache).Error
 		if err != nil {
@@ -87,9 +89,9 @@ func (r *AccountCacheRepository) Upsert(ctx context.Context, accounts []transact
 	return nil
 }
 
-func (r *AccountCacheRepository) List(ctx context.Context) ([]transaction.Account, error) {
+func (r *AccountCacheRepository) List(ctx context.Context, userID int64) ([]transaction.Account, error) {
 	var list []AccountCache
-	err := r.db.WithContext(ctx).Find(&list).Error
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&list).Error
 	if err != nil {
 		return nil, fmt.Errorf("account cache list: %w", err)
 	}

@@ -28,6 +28,7 @@ func (r *PendingTransactionRepository) Insert(ctx context.Context, pt *transacti
 
 	expiresAt := time.Now().Add(15 * time.Minute)
 	pending := PendingTransaction{
+		UserID:          pt.UserID,
 		ChatID:          pt.ChatID,
 		SourceMessageID: pt.SourceMessageID,
 		Type:            pt.Type,
@@ -67,6 +68,7 @@ func (r *PendingTransactionRepository) FindActiveByChat(ctx context.Context, cha
 
 	return &transaction.PendingTransactionRow{
 		ID:              pt.ID,
+		UserID:          pt.UserID,
 		ChatID:          pt.ChatID,
 		SourceMessageID: pt.SourceMessageID,
 		Type:            pt.Type,

@@ -49,16 +49,16 @@ func NewParserService(
 	}
 }
 
-func (s *ParserService) ParseText(ctx context.Context, text string) (*ninerouter.AIExtractionResult, error) {
+func (s *ParserService) ParseText(ctx context.Context, userID int64, text string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
 	logger.Log.Info().Msg("fetching category list from database cache")
-	categories, err := s.catCacheRepo.List(ctx)
+	categories, err := s.catCacheRepo.List(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("load categories: %w", err)
 	}
 	logger.Log.Info().Int("count", len(categories)).Msg("categories retrieved successfully")
 
 	logger.Log.Info().Msg("fetching account list from database cache")
-	accounts, err := s.accCacheRepo.List(ctx)
+	accounts, err := s.accCacheRepo.List(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("load accounts: %w", err)
 	}
@@ -68,7 +68,7 @@ func (s *ParserService) ParseText(ctx context.Context, text string) (*ninerouter
 	catLabels := CategoryLabels(categories)
 	accLabels := AccountLabels(accounts)
 
-	userContext := s.buildUserContext(ctx, categories)
+	userContext := s.buildUserContext(ctx, categories, mtClient)
 
 	prompt := ninerouter.BuildTextPrompt(text, today, catLabels, accLabels, userContext)
 	logger.Log.Debug().Str("text", text).Int("prompt_len", len(prompt)).Msg("prepared AI prompt for text parsing")
@@ -76,7 +76,7 @@ func (s *ParserService) ParseText(ctx context.Context, text string) (*ninerouter
 	return s.callAI(ctx, s.nineRouter.Model(), prompt, nil)
 }
 
-func (s *ParserService) ParseImage(ctx context.Context, messageID, phone, caption string) (*ninerouter.AIExtractionResult, error) {
+func (s *ParserService) ParseImage(ctx context.Context, userID int64, messageID, phone, caption string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
 	logger.Log.Info().Str("message_id", messageID).Str("phone", phone).Msg("downloading message media via gowa client")
 	imgBytes, mimeType, err := s.gowaClient.DownloadMessageMedia(ctx, s.deviceID, messageID, phone)
 	if err != nil {
@@ -93,14 +93,14 @@ func (s *ParserService) ParseImage(ctx context.Context, messageID, phone, captio
 	}
 
 	logger.Log.Info().Msg("fetching category list from database cache")
-	categories, err := s.catCacheRepo.List(ctx)
+	categories, err := s.catCacheRepo.List(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("load categories: %w", err)
 	}
 	logger.Log.Info().Int("count", len(categories)).Msg("categories retrieved successfully")
 
 	logger.Log.Info().Msg("fetching account list from database cache")
-	accounts, err := s.accCacheRepo.List(ctx)
+	accounts, err := s.accCacheRepo.List(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("load accounts: %w", err)
 	}
@@ -110,7 +110,7 @@ func (s *ParserService) ParseImage(ctx context.Context, messageID, phone, captio
 	catLabels := CategoryLabels(categories)
 	accLabels := AccountLabels(accounts)
 
-	userContext := s.buildUserContext(ctx, categories)
+	userContext := s.buildUserContext(ctx, categories, mtClient)
 
 	prompt := ninerouter.BuildImagePrompt(caption, today, catLabels, accLabels, userContext)
 	logger.Log.Debug().Str("caption", caption).Int("prompt_len", len(prompt)).Msg("prepared AI vision prompt for image parsing")
@@ -133,8 +133,8 @@ func (s *ParserService) ParseImage(ctx context.Context, messageID, phone, captio
 	return s.callAI(ctx, s.nineRouter.VisionModel(), prompt, imageContent)
 }
 
-func (s *ParserService) buildUserContext(ctx context.Context, categories []transaction.Category) string {
-	txs, err := s.mtClient.GetTransactions(ctx, 200)
+func (s *ParserService) buildUserContext(ctx context.Context, categories []transaction.Category, mtClient moneytracker.MoneyTrackerClient) string {
+	txs, err := mtClient.GetTransactions(ctx, 200)
 	if err != nil {
 		logger.Log.Warn().Err(err).Msg("failed to load transactions history for user context")
 		return ""

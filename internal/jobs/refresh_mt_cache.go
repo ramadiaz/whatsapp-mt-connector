@@ -3,60 +3,86 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/persistence/postgres"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
+	"gorm.io/gorm"
 )
 
 const TypeRefreshMTCache = "cache:refresh"
 
 type RefreshMTCacheHandler struct {
-	mtClient      moneytracker.MoneyTrackerClient
+	db            *gorm.DB
+	userRepo      *postgres.UserRepository
 	catCacheRepo  transaction.CategoryCacheRepository
 	accCacheRepo  transaction.AccountCacheRepository
+	mtHost        string
+	defaultAPIKey string
 }
 
 func NewRefreshMTCacheHandler(
-	mtClient moneytracker.MoneyTrackerClient,
+	db *gorm.DB,
+	userRepo *postgres.UserRepository,
 	catCacheRepo transaction.CategoryCacheRepository,
 	accCacheRepo transaction.AccountCacheRepository,
+	mtHost string,
+	defaultAPIKey string,
 ) *RefreshMTCacheHandler {
 	return &RefreshMTCacheHandler{
-		mtClient:     mtClient,
-		catCacheRepo: catCacheRepo,
-		accCacheRepo: accCacheRepo,
+		db:            db,
+		userRepo:      userRepo,
+		catCacheRepo:  catCacheRepo,
+		accCacheRepo:  accCacheRepo,
+		mtHost:        mtHost,
+		defaultAPIKey: defaultAPIKey,
 	}
 }
 
 func (h *RefreshMTCacheHandler) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 	log := logger.Log
 
-	categories, err := h.mtClient.GetCategories(ctx)
-	if err != nil {
-		log.Error().Err(err).Msg("refresh: get categories failed")
-		return fmt.Errorf("get categories: %w", err)
-	}
-
-	if err := h.catCacheRepo.Upsert(ctx, categories); err != nil {
-		log.Error().Err(err).Msg("refresh: upsert categories failed")
+	var users []postgres.User
+	if err := h.db.WithContext(ctx).Find(&users).Error; err != nil {
+		log.Error().Err(err).Msg("refresh: list users failed")
 		return err
 	}
 
-	accounts, err := h.mtClient.GetAccounts(ctx)
-	if err != nil {
-		log.Error().Err(err).Msg("refresh: get accounts failed")
-		return fmt.Errorf("get accounts: %w", err)
+	for _, u := range users {
+		key := u.MTAPIKey
+		if key == "" {
+			continue
+		}
+		log.Info().Int64("user_id", u.ID).Msg("refreshing cache for user")
+		mtClient := moneytracker.NewClient(h.mtHost, key, 30*time.Second)
+
+		categories, err := mtClient.GetCategories(ctx)
+		if err != nil {
+			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: get categories failed")
+			continue
+		}
+
+		if err := h.catCacheRepo.Upsert(ctx, u.ID, categories); err != nil {
+			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: upsert categories failed")
+			continue
+		}
+
+		accounts, err := mtClient.GetAccounts(ctx)
+		if err != nil {
+			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: get accounts failed")
+			continue
+		}
+
+		if err := h.accCacheRepo.Upsert(ctx, u.ID, accounts); err != nil {
+			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: upsert accounts failed")
+			continue
+		}
 	}
 
-	if err := h.accCacheRepo.Upsert(ctx, accounts); err != nil {
-		log.Error().Err(err).Msg("refresh: upsert accounts failed")
-		return err
-	}
-
-	log.Info().Int("categories", len(categories)).Int("accounts", len(accounts)).Msg("MT cache refreshed")
+	log.Info().Msg("MT cache refreshed for all users")
 	return nil
 }
 

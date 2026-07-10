@@ -24,16 +24,17 @@ type SubmissionRepository interface {
 }
 
 type CategoryCacheRepository interface {
-	Upsert(ctx context.Context, categories []Category) error
-	List(ctx context.Context) ([]Category, error)
+	Upsert(ctx context.Context, userID int64, categories []Category) error
+	List(ctx context.Context, userID int64) ([]Category, error)
 }
 
 type AccountCacheRepository interface {
-	Upsert(ctx context.Context, accounts []Account) error
-	List(ctx context.Context) ([]Account, error)
+	Upsert(ctx context.Context, userID int64, accounts []Account) error
+	List(ctx context.Context, userID int64) ([]Account, error)
 }
 
 type PendingTransactionInsert struct {
+	UserID          int64
 	ChatID          string
 	SourceMessageID string
 	Type            string
@@ -50,6 +51,7 @@ type PendingTransactionInsert struct {
 
 type PendingTransactionRow struct {
 	ID              int64
+	UserID          int64
 	ChatID          string
 	SourceMessageID string
 	Type            string

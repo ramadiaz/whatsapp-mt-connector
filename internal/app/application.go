@@ -59,6 +59,7 @@ func Run() error {
 
 	log.Info().Msg("running database auto migration")
 	err = db.AutoMigrate(
+		&postgres.User{},
 		&postgres.InboundMessage{},
 		&postgres.PendingTransaction{},
 		&postgres.TransactionSubmission{},
@@ -84,6 +85,7 @@ func Run() error {
 		return fmt.Errorf("init 9router: %w", err)
 	}
 
+	userRepo := postgres.NewUserRepository(db)
 	inboundRepo := postgres.NewInboundRepository(db)
 	pendingRepo := postgres.NewPendingTransactionRepository(db)
 	submissionRepo := postgres.NewSubmissionRepository(db)
@@ -99,8 +101,8 @@ func Run() error {
 	txSvc := service.NewTransactionService(mtClient, catCacheRepo, accCacheRepo, pendingRepo, submissionRepo)
 	confirmationSvc := service.NewConfirmationService(pendingRepo, txSvc, gowaClient, cfg.GOWADeviceID)
 
-	processHandler := jobs.NewProcessMessageHandler(inboundRepo, parserSvc, txSvc, confirmationSvc, gowaClient, cfg.GOWADeviceID)
-	refreshHandler := jobs.NewRefreshMTCacheHandler(mtClient, catCacheRepo, accCacheRepo)
+	processHandler := jobs.NewProcessMessageHandler(inboundRepo, userRepo, parserSvc, txSvc, confirmationSvc, gowaClient, cfg.GOWADeviceID, cfg.AllowedNumbers, cfg.MTAPIKey, cfg.MTHost)
+	refreshHandler := jobs.NewRefreshMTCacheHandler(db, userRepo, catCacheRepo, accCacheRepo, cfg.MTHost, cfg.MTAPIKey)
 
 	asynqServer := redisqueue.NewAsynqServer(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	mux := asynq.NewServeMux()

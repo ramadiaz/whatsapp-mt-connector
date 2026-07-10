@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shopspring/decimal"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
-	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/money"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
 	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/money"
+	"github.com/shopspring/decimal"
 )
 
 type ConfirmationService struct {
@@ -35,7 +36,7 @@ func NewConfirmationService(
 	}
 }
 
-func (s *ConfirmationService) Handle(ctx context.Context, chatID, text, replyToID, correlationID string) error {
+func (s *ConfirmationService) Handle(ctx context.Context, chatID, text, replyToID, correlationID string, mtClient moneytracker.MoneyTrackerClient) error {
 	log := logger.WithCorrelationID(correlationID)
 	cmd := strings.ToLower(strings.TrimSpace(text))
 
@@ -43,7 +44,7 @@ func (s *ConfirmationService) Handle(ctx context.Context, chatID, text, replyToI
 	switch cmd {
 	case "ya", "yes", "confirm":
 		log.Info().Msg("confirmation input matches yes, proceeding to confirm transaction")
-		return s.confirm(ctx, chatID, replyToID, correlationID)
+		return s.confirm(ctx, chatID, replyToID, correlationID, mtClient)
 	case "batal", "cancel", "tidak", "no":
 		log.Info().Msg("confirmation input matches cancel, proceeding to cancel transaction")
 		return s.cancel(ctx, chatID, replyToID, correlationID)
@@ -63,7 +64,7 @@ func (s *ConfirmationService) IsConfirmationCommand(text string) bool {
 	return false
 }
 
-func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, correlationID string) error {
+func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, correlationID string, mtClient moneytracker.MoneyTrackerClient) error {
 	log := logger.WithCorrelationID(correlationID)
 
 	log.Info().Str("chat_id", chatID).Msg("searching for active pending transaction")
@@ -78,7 +79,7 @@ func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, co
 	}
 
 	log.Info().Int64("pending_id", pending.ID).Msg("found active pending transaction, committing to money tracker")
-	created, err := s.txService.Commit(ctx, pending.ID, pending)
+	created, err := s.txService.Commit(ctx, pending.ID, pending, mtClient)
 	if err != nil {
 		log.Error().Err(err).Int64("pending_id", pending.ID).Msg("transaction commit failed")
 		if errors.Is(err, apperrors.ErrMoneyTrackerRejected) {
