@@ -27,6 +27,14 @@ type ParserService struct {
 	maxRetries    int
 }
 
+func (s *ParserService) CategoryCacheRepo() transaction.CategoryCacheRepository {
+	return s.catCacheRepo
+}
+
+func (s *ParserService) AccountCacheRepo() transaction.AccountCacheRepository {
+	return s.accCacheRepo
+}
+
 func NewParserService(
 	gowaClient gowa.WhatsAppGateway,
 	nineRouter *ninerouter.Client,

@@ -117,6 +117,20 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
 			return err
 		}
+
+		log.Info().Int64("user_id", user.ID).Msg("triggering immediate cache sync for newly registered user")
+		mtClient := moneytracker.NewClient(h.mtHost, newKey, 30*time.Second)
+		if categories, err := mtClient.GetCategories(ctx); err == nil {
+			_ = h.parserSvc.CategoryCacheRepo().Upsert(ctx, user.ID, categories)
+		} else {
+			log.Error().Err(err).Msg("failed fetching categories for new user")
+		}
+		if accounts, err := mtClient.GetAccounts(ctx); err == nil {
+			_ = h.parserSvc.AccountCacheRepo().Upsert(ctx, user.ID, accounts)
+		} else {
+			log.Error().Err(err).Msg("failed fetching accounts for new user")
+		}
+
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "API Key berhasil diregister! Anda sekarang bisa mencatat transaksi.", p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
