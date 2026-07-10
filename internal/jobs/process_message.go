@@ -108,7 +108,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	if strings.HasPrefix(strings.ToLower(bodyText), "key ") {
 		newKey := strings.TrimSpace(bodyText[4:])
 		if newKey == "" {
-			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "Format salah. Kirim: key <MT_API_KEY>", p.MessageID)
+			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "A-ano... formatnya kurang tepat desu~ 🥺 Kirim: key <MT_API_KEY> onegaishimasu!", p.MessageID)
 			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 			return nil
 		}
@@ -131,13 +131,13 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			log.Error().Err(err).Msg("failed fetching accounts for new user")
 		}
 
-		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "API Key berhasil diregister! Anda sekarang bisa mencatat transaksi.", p.MessageID)
+		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "Kyaa~! API Key-nya berhasil didaftarkan desu! 🎉✨ Sekarang kita bisa mulai mencatat bareng, uwu~", p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
 	}
 
 	if user.MTAPIKey == "" {
-		msg := "Nomor WhatsApp Anda belum terdaftar. Silakan kirim API Key Anda terlebih dahulu dengan format:\n\n*key [MT_API_KEY]*\n\nContoh:\n*key eyJ0eXAiOiJKV1Qi...*"
+		msg := "Nya~? Nomor kamu belum terdaftar desu... 🐱💦 Yuk daftarin API Key dulu onegai~\n\n*key [MT_API_KEY]*\n\nContoh:\n*key eyJ0eXAiOiJKV1Qi...*"
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
@@ -160,7 +160,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	if len(cats) == 0 {
-		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "Data kategori sedang disinkronisasikan. Silakan coba kembali dalam 10 detik.", p.MessageID)
+		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "Matte kudasai~! 🌸 Kategorinya lagi disinkronisasi desu. Coba lagi dalam 10 detik ya, ganbare!", p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
 	}
@@ -197,7 +197,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		missing := h.getMissingFields(result)
 		if len(missing) > 0 {
 			log.Info().Interface("missing_fields", missing).Msg("missing crucial transaction fields, prompt verification")
-			msg := fmt.Sprintf("Transaksi belum lengkap. Mohon sertakan %s.", strings.Join(missing, ", "))
+			msg := fmt.Sprintf("U-um... transaksinya kurang lengkap desu~ 🥺 Mohon sertakan %s onegaishimasu!", strings.Join(missing, ", "))
 			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 			return nil
@@ -236,7 +236,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 	if result.Intent == "clarification" || result.Intent == "unsupported" {
 		log.Info().Str("intent", result.Intent).Msg("intent clarification or unsupported detected, sending retry format prompt")
-		msg := "Maaf, saya tidak mengerti. Coba format: *catat kopi 25k* atau ketik *bantuan* untuk panduan."
+		msg := "Eeeh?! Aku nggak ngerti desu~ 🥹 Coba format: *catat kopi 25k* atau ketik *bantuan* untuk panduan, ne~"
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
@@ -245,7 +245,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	missing := h.getMissingFields(result)
 	if len(missing) > 0 {
 		log.Info().Interface("missing_fields", missing).Msg("missing crucial transaction fields, prompt verification")
-		msg := fmt.Sprintf("Transaksi belum lengkap. Mohon sertakan %s.", strings.Join(missing, ", "))
+		msg := fmt.Sprintf("U-um... transaksinya kurang lengkap desu~ 🥺 Mohon sertakan %s onegaishimasu!", strings.Join(missing, ", "))
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
@@ -275,15 +275,15 @@ func (h *ProcessMessageHandler) handleParseError(ctx context.Context, p ProcessM
 	var msg string
 	switch {
 	case errors.Is(err, apperrors.ErrMediaTooLarge):
-		msg = "Ukuran foto terlalu besar (maks 5MB). Coba kompres foto terlebih dahulu."
+		msg = "Kyaa~ fotonya kebesaran desu! 😢 Maks 5MB aja ne~ Kompres dulu onegai~"
 	case errors.Is(err, apperrors.ErrUnsupportedMessageType):
-		msg = "Format foto tidak didukung. Gunakan JPEG, PNG, atau WebP."
+		msg = "A-ano... format fotonya belum didukung desu 🥺 Coba JPEG, PNG, atau WebP ya, ne~"
 	case errors.Is(err, apperrors.ErrUnknownCategory):
-		msg = "Kategori tidak ditemukan. Coba tulis ulang dengan kata kunci yang lebih jelas (contoh: makan, transport, belanja)."
+		msg = "Hmm~ kategorinya nggak ketemu desu 💦 Coba tulis lebih jelas ya (contoh: makan, transport, belanja)~"
 	case errors.Is(err, apperrors.ErrAIUnavailable):
-		msg = "Layanan AI sedang tidak tersedia. Coba beberapa saat lagi."
+		msg = "AI-chan lagi oyasumi desu~ 😴💤 Coba lagi nanti ya, gomen ne~"
 	default:
-		msg = "Gagal memproses pesan. Coba format: *expense | 25000 | food | kopi susu | 2026-07-03*"
+		msg = "Eeh, gagal desu 🥹 Coba format: *expense | 25000 | food | kopi susu | 2026-07-03* onegai!"
 	}
 
 	_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
@@ -322,7 +322,7 @@ func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p Pr
 		txTypeLabel = "Pemasukan"
 	}
 
-	msg := fmt.Sprintf(`Saya baca transaksi berikut:
+	msg := fmt.Sprintf(`Kyaa~ aku baca transaksinya desu! 💖✨
 
 %s: %s
 Kategori: %s
@@ -330,7 +330,8 @@ Akun: %s
 Tanggal: %s
 Catatan: %s
 
-Balas "ya" untuk simpan atau "batal" untuk membatalkan.`,
+Balas *ya* untuk simpan~ atau *batal* untuk membatalkan ne! 🥰`,
+
 		txTypeLabel,
 		money.FormatRupiah(amount),
 		cat,
@@ -363,7 +364,9 @@ func (h *ProcessMessageHandler) getMissingFields(result *ninerouter.AIExtraction
 }
 
 func helpText() string {
-	return `🤖 *Money Tracker Bot*
+	return `🤖✨ *Money Tracker Bot desu~!*
+
+Konnichiwa~! Hajimemashite, aku siap bantu catat transaksi kamu! 💕
 
 *Format input:*
 • catat kopi susu 25k
@@ -372,6 +375,8 @@ func helpText() string {
 • income freelance 1.500.000
 
 *Konfirmasi:*
-• Balas *ya* untuk menyimpan
-• Balas *batal* untuk membatalkan`
+• Balas *ya* untuk menyimpan~ 💾
+• Balas *batal* untuk membatalkan ❌
+
+Ganbare~! Aku selalu ada buat kamu desu! 🌸🎀`
 }
