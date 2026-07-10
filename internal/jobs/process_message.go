@@ -145,6 +145,26 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 	userMTClient := moneytracker.NewClient(h.mtHost, user.MTAPIKey, 30*time.Second)
 
+	cats, _ := h.parserSvc.CategoryCacheRepo().List(ctx, user.ID)
+	if len(cats) == 0 {
+		log.Info().Int64("user_id", user.ID).Msg("category cache is empty, trying sync categories")
+		categories, err := userMTClient.GetCategories(ctx)
+		if err == nil {
+			_ = h.parserSvc.CategoryCacheRepo().Upsert(ctx, user.ID, categories)
+			cats = categories
+		}
+		accounts, err := userMTClient.GetAccounts(ctx)
+		if err == nil {
+			_ = h.parserSvc.AccountCacheRepo().Upsert(ctx, user.ID, accounts)
+		}
+	}
+
+	if len(cats) == 0 {
+		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, "Data kategori sedang disinkronisasikan. Silakan coba kembali dalam 10 detik.", p.MessageID)
+		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+		return nil
+	}
+
 	log.Debug().Str("body", p.Body).Msg("checking if text is confirmation command")
 	if h.confirmationSvc.IsConfirmationCommand(p.Body) {
 		log.Info().Str("command", p.Body).Msg("confirmation command detected, invoking confirmation handler")
