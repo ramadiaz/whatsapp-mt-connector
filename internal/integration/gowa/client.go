@@ -12,6 +12,7 @@ import (
 
 type WhatsAppGateway interface {
 	SendText(ctx context.Context, deviceID, chatID, message string, replyToID string) error
+	SendChatPresence(ctx context.Context, deviceID, chatID, action string) error
 	DownloadMessageMedia(ctx context.Context, deviceID, messageID, phone string) ([]byte, string, error)
 	Health(ctx context.Context) error
 }
@@ -68,6 +69,30 @@ func (c *Client) SendText(ctx context.Context, deviceID, chatID, message string,
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("gowa send text: http %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) SendChatPresence(ctx context.Context, deviceID, chatID, action string) error {
+	b, _ := json.Marshal(map[string]interface{}{
+		"phone":  chatID,
+		"action": action,
+	})
+	req, err := c.newRequest(ctx, http.MethodPost, "/send/chat-presence", strings.NewReader(string(b)))
+	if err != nil {
+		return fmt.Errorf("gowa chat presence: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Device-Id", deviceID)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gowa chat presence: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("gowa chat presence: http %d", resp.StatusCode)
 	}
 	return nil
 }

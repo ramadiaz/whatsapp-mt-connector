@@ -86,6 +86,8 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	log.Info().Int64("inbound_id", p.InboundID).Str("type", p.Type).Msg("processing inbound message task")
 
 	_ = h.inboundRepo.MarkProcessing(ctx, p.InboundID)
+	_ = h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "start")
+	defer h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "stop") //nolint:errcheck
 
 	role := "customer"
 	apiKey := ""
