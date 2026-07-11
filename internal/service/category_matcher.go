@@ -1,6 +1,7 @@
 package service
 
 import (
+	"html"
 	"strings"
 
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
@@ -21,17 +22,17 @@ func MatchCategory(hint string, categories []transaction.Category) *transaction.
 	if hint == "" {
 		return nil
 	}
-	hintLower := strings.ToLower(strings.TrimSpace(hint))
+	hintLower := strings.ToLower(strings.TrimSpace(html.UnescapeString(hint)))
 
 	for i := range categories {
-		catTitleLower := strings.ToLower(categories[i].Title)
+		catTitleLower := strings.ToLower(html.UnescapeString(categories[i].Title))
 		if catTitleLower == hintLower {
 			return &categories[i]
 		}
 	}
 
 	for i := range categories {
-		catTitleLower := strings.ToLower(categories[i].Title)
+		catTitleLower := strings.ToLower(html.UnescapeString(categories[i].Title))
 		if strings.Contains(catTitleLower, hintLower) || strings.Contains(hintLower, catTitleLower) {
 			return &categories[i]
 		}
