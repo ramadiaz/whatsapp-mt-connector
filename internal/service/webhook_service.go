@@ -109,15 +109,16 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 	log.Info().Str("inbound_uuid", id).Str("type", string(msgType)).Msg("enqueuing message processing task to queue")
 
 	payload, _ := json.Marshal(map[string]interface{}{
-		"inbound_id":    id,
-		"chat_id":       event.Payload.ChatID,
-		"sender_number": senderNumber,
-		"message_id":    event.Payload.ID,
-		"type":          string(msgType),
-		"body":          event.Payload.Body,
-		"caption":       event.Payload.Caption,
-		"device_id":     s.deviceID,
+		"inbound_id":     id,
+		"chat_id":        event.Payload.ChatID,
+		"sender_number":  senderNumber,
+		"message_id":     event.Payload.ID,
+		"type":           string(msgType),
+		"body":           event.Payload.Body,
+		"caption":        event.Payload.Caption,
+		"device_id":      s.deviceID,
 		"correlation_id": correlationID,
+		"quoted_body":    event.Payload.QuotedBody,
 	})
 
 	task := asynq.NewTask("process:message", payload, asynq.Queue("default"))

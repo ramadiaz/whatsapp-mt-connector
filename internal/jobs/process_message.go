@@ -35,6 +35,7 @@ type ProcessMessagePayload struct {
 	Caption       string `json:"caption"`
 	DeviceID      string `json:"device_id"`
 	CorrelationID string `json:"correlation_id"`
+	QuotedBody    string `json:"quoted_body"`
 }
 
 type ProcessMessageHandler struct {
@@ -190,7 +191,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		if caption == "" {
 			caption = p.Body
 		}
-		result, err := h.parserSvc.ParseImage(ctx, user.UUID, p.MessageID, phone, caption, userMTClient)
+		result, err := h.parserSvc.ParseImage(ctx, user.UUID, p.MessageID, phone, caption, p.QuotedBody, userMTClient)
 		if err != nil {
 			log.Error().Err(err).Msg("parsing image media payload failed")
 			return h.handleParseError(ctx, p, err)
@@ -218,7 +219,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 	text := p.Body
 	log.Info().Str("text", text).Msg("parsing text message payload")
-	result, err := h.parserSvc.ParseText(ctx, user.UUID, text, userMTClient)
+	result, err := h.parserSvc.ParseText(ctx, user.UUID, text, p.QuotedBody, userMTClient)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing text message payload failed")
 		parseErr = err

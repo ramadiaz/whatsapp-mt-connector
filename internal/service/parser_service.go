@@ -57,7 +57,7 @@ func NewParserService(
 	}
 }
 
-func (s *ParserService) ParseText(ctx context.Context, userUUID string, text string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
+func (s *ParserService) ParseText(ctx context.Context, userUUID string, text, quotedBody string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
 	logger.Log.Info().Msg("fetching category list from database cache")
 	categories, err := s.catCacheRepo.List(ctx, userUUID)
 	if err != nil {
@@ -78,13 +78,13 @@ func (s *ParserService) ParseText(ctx context.Context, userUUID string, text str
 
 	userContext := s.buildUserContext(ctx, categories, mtClient)
 
-	prompt := ninerouter.BuildTextPrompt(text, today, catLabels, accLabels, userContext)
+	prompt := ninerouter.BuildTextPrompt(text, quotedBody, today, catLabels, accLabels, userContext)
 	logger.Log.Debug().Str("text", text).Int("prompt_len", len(prompt)).Msg("prepared AI prompt for text parsing")
 
 	return s.callAI(ctx, s.nineRouter.Model(), prompt, nil)
 }
 
-func (s *ParserService) ParseImage(ctx context.Context, userUUID string, messageID, phone, caption string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
+func (s *ParserService) ParseImage(ctx context.Context, userUUID string, messageID, phone, caption, quotedBody string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
 	logger.Log.Info().Str("message_id", messageID).Str("phone", phone).Msg("downloading message media via gowa client")
 	imgBytes, mimeType, err := s.gowaClient.DownloadMessageMedia(ctx, s.deviceID, messageID, phone)
 	if err != nil {
@@ -120,7 +120,7 @@ func (s *ParserService) ParseImage(ctx context.Context, userUUID string, message
 
 	userContext := s.buildUserContext(ctx, categories, mtClient)
 
-	prompt := ninerouter.BuildImagePrompt(caption, today, catLabels, accLabels, userContext)
+	prompt := ninerouter.BuildImagePrompt(caption, quotedBody, today, catLabels, accLabels, userContext)
 	logger.Log.Debug().Str("caption", caption).Int("prompt_len", len(prompt)).Msg("prepared AI vision prompt for image parsing")
 
 	b64 := base64.StdEncoding.EncodeToString(imgBytes)

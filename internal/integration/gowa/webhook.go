@@ -7,16 +7,18 @@ type WebhookEvent struct {
 }
 
 type MessagePayload struct {
-	ID        string `json:"id"`
-	From      string `json:"from"`
-	ChatID    string `json:"chat_id"`
-	IsFromMe  bool   `json:"is_from_me"`
-	Type      string `json:"type"`
-	Body      string `json:"body"`
-	Caption   string `json:"caption"`
-	MediaType string `json:"media_type"`
-	Image     any    `json:"image"`
-	IsGroup   bool   `json:"is_group"`
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	ChatID      string `json:"chat_id"`
+	IsFromMe    bool   `json:"is_from_me"`
+	Type        string `json:"type"`
+	Body        string `json:"body"`
+	Caption     string `json:"caption"`
+	MediaType   string `json:"media_type"`
+	Image       any    `json:"image"`
+	IsGroup     bool   `json:"is_group"`
+	RepliedToID string `json:"replied_to_id"`
+	QuotedBody  string `json:"quoted_body"`
 }
 
 func NormalizeSenderJID(jid string) string {

@@ -19,10 +19,14 @@ Amount must be a positive numeric value without currency separators.
 Allowed intent values: create_transaction, clarification, help, unsupported
 Allowed type values: income, expense, null`
 
-func BuildTextPrompt(text, today string, categoryLabels, accountLabels []string, userContext string) string {
+func BuildTextPrompt(text, quotedText, today string, categoryLabels, accountLabels []string, userContext string) string {
 	contextPart := ""
 	if userContext != "" {
 		contextPart = fmt.Sprintf("\n%s\n", userContext)
+	}
+	quotedPart := ""
+	if quotedText != "" {
+		quotedPart = fmt.Sprintf("\nQuoted message (the message user replied to): %s\n", quotedText)
 	}
 	return fmt.Sprintf(`%s
 
@@ -31,7 +35,7 @@ Timezone: Asia/Jakarta
 
 Available categories: %s
 Available accounts: %s
-%s
+%s%s
 User message: %s
 
 Respond with JSON only matching this exact schema:
@@ -53,11 +57,12 @@ Respond with JSON only matching this exact schema:
 		strings.Join(categoryLabels, ", "),
 		strings.Join(accountLabels, ", "),
 		contextPart,
+		quotedPart,
 		text,
 	)
 }
 
-func BuildImagePrompt(caption, today string, categoryLabels, accountLabels []string, userContext string) string {
+func BuildImagePrompt(caption, quotedText, today string, categoryLabels, accountLabels []string, userContext string) string {
 	captionPart := ""
 	if caption != "" {
 		captionPart = fmt.Sprintf("\nUser caption: %s", caption)
@@ -66,6 +71,10 @@ func BuildImagePrompt(caption, today string, categoryLabels, accountLabels []str
 	if userContext != "" {
 		contextPart = fmt.Sprintf("\n%s\n", userContext)
 	}
+	quotedPart := ""
+	if quotedText != "" {
+		quotedPart = fmt.Sprintf("\nQuoted message (the message user replied to): %s\n", quotedText)
+	}
 	return fmt.Sprintf(`%s
 
 Today's date: %s
@@ -73,7 +82,7 @@ Timezone: Asia/Jakarta
 
 Available categories: %s
 Available accounts: %s
-%s%s
+%s%s%s
 Extract transaction from the receipt image above.
 Respond with JSON only matching this exact schema:
 {
@@ -94,6 +103,7 @@ Respond with JSON only matching this exact schema:
 		strings.Join(categoryLabels, ", "),
 		strings.Join(accountLabels, ", "),
 		contextPart,
+		quotedPart,
 		captionPart,
 	)
 }
