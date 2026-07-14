@@ -244,11 +244,8 @@ func (s *ParserService) callAI(ctx context.Context, model, systemPrompt string, 
 
 func (s *ParserService) AnalyzeWasteful(ctx context.Context, remark, category string, amount float64) (bool, string, error) {
 	prompt := ninerouter.BuildWastefulPrompt(remark, category, amount)
-	messages := []ninerouter.Message{
-		{Role: "user", Content: prompt},
-	}
 
-	raw, err := s.nineRouter.Complete(ctx, s.nineRouter.Model(), "", messages, 200)
+	raw, err := s.nineRouter.CompleteSimple(ctx, prompt, 0)
 	if err != nil {
 		logger.Log.Warn().Err(err).Msg("wasteful analysis AI call failed")
 		return false, "", err

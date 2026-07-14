@@ -140,6 +140,60 @@ func (c *Client) Complete(ctx context.Context, model, systemPrompt string, userM
 	return result.Choices[0].Message.Content, nil
 }
 
+func (c *Client) CompleteSimple(ctx context.Context, userMessage string, maxTokens int) (string, error) {
+	body := map[string]interface{}{
+		"model": c.model,
+		"messages": []map[string]string{
+			{"role": "user", "content": userMessage},
+		},
+		"stream": false,
+	}
+	if maxTokens > 0 {
+		body["max_tokens"] = maxTokens
+	}
+
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/chat/completions", bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("9router complete simple: %w", err)
+	}
+	defer resp.Body.Close()
+
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("9router read: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("9router http %d: %s", resp.StatusCode, string(rawBody))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(rawBody, &result); err != nil {
+		return "", fmt.Errorf("9router decode: %w", err)
+	}
+
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("9router: no choices in response")
+	}
+
+	return result.Choices[0].Message.Content, nil
+}
+
+
 func (c *Client) Model() string {
 	return c.model
 }
