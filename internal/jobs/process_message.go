@@ -139,7 +139,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	if user.MTAPIKey == "" {
-		msg := "...a-ano... (ini canggung banget) ...nomor kamu kayaknya belum terdaftar... 😶 Um, kalau nggak keberatan... coba daftarin API Key dulu ya?\n\n*key [MT_API_KEY]*\n\nContoh:\n*key eyJ0eXAiOiJKV1Qi...*\n\n...(maaf ya ngerepotin)"
+		msg := "...a-ano... (ini canggung banget) ...nomor kamu kayaknya belum terdaftar... 😶 Um, kalau nggak keberatan... coba daftarin API Key dulu ya?\n\n*Cara dapetin API Key:*\n1. Download app Money Tracker di xann.my.id/s/money-tracker\n2. Buka *Profile → Settings → API (Developer Tools)*\n3. Copy Authorization Token-nya\n\nTerus kirim:\n*key [MT_API_KEY]*\n\nContoh:\n*key eyJ0eXAiOiJKV1Qi...*\n\n...(maaf ya ngerepotin)"
 		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
