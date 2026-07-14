@@ -248,7 +248,7 @@ func (s *ParserService) AnalyzeWasteful(ctx context.Context, remark, category st
 		{Role: "user", Content: prompt},
 	}
 
-	raw, err := s.nineRouter.Complete(ctx, s.nineRouter.Model(), prompt, messages, 200)
+	raw, err := s.nineRouter.Complete(ctx, s.nineRouter.Model(), "", messages, 200)
 	if err != nil {
 		logger.Log.Warn().Err(err).Msg("wasteful analysis AI call failed")
 		return false, "", err
