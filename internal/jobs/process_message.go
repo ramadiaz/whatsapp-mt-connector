@@ -26,7 +26,7 @@ import (
 const TypeProcessMessage = "process:message"
 
 type ProcessMessagePayload struct {
-	InboundID     int64  `json:"inbound_id"`
+	InboundID     string `json:"inbound_id"`
 	ChatID        string `json:"chat_id"`
 	SenderNumber  string `json:"sender_number"`
 	MessageID     string `json:"message_id"`
@@ -83,7 +83,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	log := logger.WithCorrelationID(p.CorrelationID)
-	log.Info().Int64("inbound_id", p.InboundID).Str("type", p.Type).Msg("processing inbound message task")
+	log.Info().Str("inbound_uuid", p.InboundID).Str("type", p.Type).Msg("processing inbound message task")
 
 	_ = h.inboundRepo.MarkProcessing(ctx, p.InboundID)
 	_ = h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "start")
@@ -114,21 +114,21 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 			return nil
 		}
-		if err := h.userRepo.UpdateAPIKey(ctx, user.ID, newKey); err != nil {
+		if err := h.userRepo.UpdateAPIKey(ctx, user.UUID, newKey); err != nil {
 			log.Error().Err(err).Msg("failed updating api key")
 			_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
 			return err
 		}
 
-		log.Info().Int64("user_id", user.ID).Msg("triggering immediate cache sync for newly registered user")
+		log.Info().Str("user_uuid", user.UUID).Msg("triggering immediate cache sync for newly registered user")
 		mtClient := moneytracker.NewClient(h.mtHost, newKey, 30*time.Second)
 		if categories, err := mtClient.GetCategories(ctx); err == nil {
-			_ = h.parserSvc.CategoryCacheRepo().Upsert(ctx, user.ID, categories)
+			_ = h.parserSvc.CategoryCacheRepo().Upsert(ctx, user.UUID, categories)
 		} else {
 			log.Error().Err(err).Msg("failed fetching categories for new user")
 		}
 		if accounts, err := mtClient.GetAccounts(ctx); err == nil {
-			_ = h.parserSvc.AccountCacheRepo().Upsert(ctx, user.ID, accounts)
+			_ = h.parserSvc.AccountCacheRepo().Upsert(ctx, user.UUID, accounts)
 		} else {
 			log.Error().Err(err).Msg("failed fetching accounts for new user")
 		}
@@ -147,17 +147,17 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 	userMTClient := moneytracker.NewClient(h.mtHost, user.MTAPIKey, 30*time.Second)
 
-	cats, _ := h.parserSvc.CategoryCacheRepo().List(ctx, user.ID)
+	cats, _ := h.parserSvc.CategoryCacheRepo().List(ctx, user.UUID)
 	if len(cats) == 0 {
-		log.Info().Int64("user_id", user.ID).Msg("category cache is empty, trying sync categories")
+		log.Info().Str("user_uuid", user.UUID).Msg("category cache is empty, trying sync categories")
 		categories, err := userMTClient.GetCategories(ctx)
 		if err == nil {
-			_ = h.parserSvc.CategoryCacheRepo().Upsert(ctx, user.ID, categories)
+			_ = h.parserSvc.CategoryCacheRepo().Upsert(ctx, user.UUID, categories)
 			cats = categories
 		}
 		accounts, err := userMTClient.GetAccounts(ctx)
 		if err == nil {
-			_ = h.parserSvc.AccountCacheRepo().Upsert(ctx, user.ID, accounts)
+			_ = h.parserSvc.AccountCacheRepo().Upsert(ctx, user.UUID, accounts)
 		}
 	}
 
@@ -190,7 +190,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		if caption == "" {
 			caption = p.Body
 		}
-		result, err := h.parserSvc.ParseImage(ctx, user.ID, p.MessageID, phone, caption, userMTClient)
+		result, err := h.parserSvc.ParseImage(ctx, user.UUID, p.MessageID, phone, caption, userMTClient)
 		if err != nil {
 			log.Error().Err(err).Msg("parsing image media payload failed")
 			return h.handleParseError(ctx, p, err)
@@ -206,19 +206,19 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		}
 
 		log.Info().Msg("image parsed successfully, creating pending transaction record")
-		pendingID, err := h.txSvc.CreatePending(ctx, user.ID, p.ChatID, p.MessageID, result)
+		pendingUUID, err := h.txSvc.CreatePending(ctx, user.UUID, p.ChatID, p.MessageID, result)
 		if err != nil {
 			log.Error().Err(err).Msg("creating pending transaction record from image failed")
 			return h.handleParseError(ctx, p, err)
 		}
 
-		log.Info().Int64("pending_id", pendingID).Msg("sending confirmation prompt to user")
+		log.Info().Str("pending_uuid", pendingUUID).Msg("sending confirmation prompt to user")
 		return h.sendConfirmationPrompt(ctx, p, result.Amount, result.Type, result.CategoryHint, result.AccountHint, result.Date, result.Remark, p.MessageID)
 	}
 
 	text := p.Body
 	log.Info().Str("text", text).Msg("parsing text message payload")
-	result, err := h.parserSvc.ParseText(ctx, user.ID, text, userMTClient)
+	result, err := h.parserSvc.ParseText(ctx, user.UUID, text, userMTClient)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing text message payload failed")
 		parseErr = err
@@ -254,18 +254,18 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	log.Info().Msg("creating pending transaction from parsed text")
-	pendingID, err := h.txSvc.CreatePending(ctx, user.ID, p.ChatID, p.MessageID, result)
+	pendingUUID, err := h.txSvc.CreatePending(ctx, user.UUID, p.ChatID, p.MessageID, result)
 	if err != nil {
 		log.Error().Err(err).Msg("creating pending transaction from parsed text failed")
 		return h.handleParseError(ctx, p, err)
 	}
 
-	log.Info().Int64("pending_id", pendingID).Msg("sending confirmation prompt to user")
+	log.Info().Str("pending_uuid", pendingUUID).Msg("sending confirmation prompt to user")
 	if err := h.sendConfirmationPrompt(ctx, p, result.Amount, result.Type, result.CategoryHint, result.AccountHint, result.Date, result.Remark, p.MessageID); err != nil {
 		log.Error().Err(err).Msg("send confirmation prompt failed")
 	}
 
-	log.Info().Int64("inbound_id", p.InboundID).Msg("completed message processing task successfully")
+	log.Info().Str("inbound_uuid", p.InboundID).Msg("completed message processing task successfully")
 	_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 	return nil
 }

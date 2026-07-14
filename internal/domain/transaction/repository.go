@@ -3,38 +3,38 @@ package transaction
 import "context"
 
 type InboundRepository interface {
-	Insert(ctx context.Context, deviceID, messageID, chatID, senderNumber, msgType, rawPayload string) (int64, error)
-	MarkProcessing(ctx context.Context, id int64) error
-	MarkDone(ctx context.Context, id int64) error
-	MarkFailed(ctx context.Context, id int64, reason string) error
+	Insert(ctx context.Context, deviceID, messageID, chatID, senderNumber, msgType, rawPayload string) (string, error)
+	MarkProcessing(ctx context.Context, id string) error
+	MarkDone(ctx context.Context, id string) error
+	MarkFailed(ctx context.Context, id string, reason string) error
 }
 
 type PendingTransactionRepository interface {
-	Insert(ctx context.Context, pt *PendingTransactionInsert) (int64, error)
+	Insert(ctx context.Context, pt *PendingTransactionInsert) (string, error)
 	FindActiveByChat(ctx context.Context, chatID string) (*PendingTransactionRow, error)
-	MarkConfirmed(ctx context.Context, id int64) error
-	MarkCancelled(ctx context.Context, id int64) error
+	MarkConfirmed(ctx context.Context, id string) error
+	MarkCancelled(ctx context.Context, id string) error
 	ExpireStale(ctx context.Context) error
 }
 
 type SubmissionRepository interface {
-	Insert(ctx context.Context, s *SubmissionInsert) (int64, error)
-	UpdateSuccess(ctx context.Context, id int64, mtTxID, responseJSON string) error
-	UpdateFailed(ctx context.Context, id int64, errMsg string) error
+	Insert(ctx context.Context, s *SubmissionInsert) (string, error)
+	UpdateSuccess(ctx context.Context, id string, mtTxID, responseJSON string) error
+	UpdateFailed(ctx context.Context, id string, errMsg string) error
 }
 
 type CategoryCacheRepository interface {
-	Upsert(ctx context.Context, userID int64, categories []Category) error
-	List(ctx context.Context, userID int64) ([]Category, error)
+	Upsert(ctx context.Context, userUUID string, categories []Category) error
+	List(ctx context.Context, userUUID string) ([]Category, error)
 }
 
 type AccountCacheRepository interface {
-	Upsert(ctx context.Context, userID int64, accounts []Account) error
-	List(ctx context.Context, userID int64) ([]Account, error)
+	Upsert(ctx context.Context, userUUID string, accounts []Account) error
+	List(ctx context.Context, userUUID string) ([]Account, error)
 }
 
 type PendingTransactionInsert struct {
-	UserID          int64
+	UserUUID        string
 	ChatID          string
 	SourceMessageID string
 	Type            string
@@ -50,8 +50,8 @@ type PendingTransactionInsert struct {
 }
 
 type PendingTransactionRow struct {
-	ID              int64
-	UserID          int64
+	UUID            string
+	UserUUID        string
 	ChatID          string
 	SourceMessageID string
 	Type            string
@@ -69,6 +69,7 @@ type PendingTransactionRow struct {
 }
 
 type SubmissionInsert struct {
-	PendingTransactionID int64
-	RequestSnapshotJSON  string
+	PendingTransactionUUID string
+	RequestSnapshotJSON    string
 }
+

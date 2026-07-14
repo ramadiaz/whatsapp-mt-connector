@@ -40,18 +40,19 @@ func (r *UserRepository) GetOrCreateByPhoneNumber(ctx context.Context, phoneNumb
 	return &user, nil
 }
 
-func (r *UserRepository) UpdateAPIKey(ctx context.Context, id int64, apiKey string) error {
-	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(map[string]interface{}{
+func (r *UserRepository) UpdateAPIKey(ctx context.Context, uuid string, apiKey string) error {
+	return r.db.WithContext(ctx).Model(&User{}).Where("uuid = ?", uuid).Updates(map[string]interface{}{
 		"mt_api_key": apiKey,
 		"updated_at": time.Now(),
 	}).Error
 }
 
-func (r *UserRepository) FindByID(ctx context.Context, id int64) (*User, error) {
+func (r *UserRepository) FindByUUID(ctx context.Context, uuid string) (*User, error) {
 	var user User
-	err := r.db.WithContext(ctx).First(&user, id).Error
+	err := r.db.WithContext(ctx).Where("uuid = ?", uuid).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
 	return &user, nil
 }
+

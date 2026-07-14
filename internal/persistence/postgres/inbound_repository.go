@@ -20,7 +20,7 @@ func NewInboundRepository(db *gorm.DB) *InboundRepository {
 	return &InboundRepository{db: db}
 }
 
-func (r *InboundRepository) Insert(ctx context.Context, deviceID, messageID, chatID, senderNumber, msgType, rawPayload string) (int64, error) {
+func (r *InboundRepository) Insert(ctx context.Context, deviceID, messageID, chatID, senderNumber, msgType, rawPayload string) (string, error) {
 	msg := InboundMessage{
 		GowaDeviceID:   deviceID,
 		GowaMessageID:  messageID,
@@ -35,29 +35,30 @@ func (r *InboundRepository) Insert(ctx context.Context, deviceID, messageID, cha
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return 0, apperrors.ErrDuplicateMessage
+			return "", apperrors.ErrDuplicateMessage
 		}
-		return 0, fmt.Errorf("inbound insert: %w", err)
+		return "", fmt.Errorf("inbound insert: %w", err)
 	}
-	return msg.ID, nil
+	return msg.UUID, nil
 }
 
-func (r *InboundRepository) MarkProcessing(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&InboundMessage{}).Where("id = ?", id).Update("status", "processing").Error
+func (r *InboundRepository) MarkProcessing(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Model(&InboundMessage{}).Where("uuid = ?", id).Update("status", "processing").Error
 }
 
-func (r *InboundRepository) MarkDone(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&InboundMessage{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"status":      "done",
+func (r *InboundRepository) MarkDone(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Model(&InboundMessage{}).Where("uuid = ?", id).Updates(map[string]interface{}{
+		"status":       "done",
 		"processed_at": time.Now(),
 	}).Error
 }
 
-func (r *InboundRepository) MarkFailed(ctx context.Context, id int64, reason string) error {
-	return r.db.WithContext(ctx).Model(&InboundMessage{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"status":      "failed",
+func (r *InboundRepository) MarkFailed(ctx context.Context, id string, reason string) error {
+	return r.db.WithContext(ctx).Model(&InboundMessage{}).Where("uuid = ?", id).Updates(map[string]interface{}{
+		"status":       "failed",
 		"processed_at": time.Now(),
 	}).Error
 }
 
 var _ transaction.InboundRepository = (*InboundRepository)(nil)
+

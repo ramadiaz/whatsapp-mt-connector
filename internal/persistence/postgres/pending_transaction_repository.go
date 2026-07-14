@@ -20,15 +20,15 @@ func NewPendingTransactionRepository(db *gorm.DB) *PendingTransactionRepository 
 	return &PendingTransactionRepository{db: db}
 }
 
-func (r *PendingTransactionRepository) Insert(ctx context.Context, pt *transaction.PendingTransactionInsert) (int64, error) {
+func (r *PendingTransactionRepository) Insert(ctx context.Context, pt *transaction.PendingTransactionInsert) (string, error) {
 	amount, err := decimal.NewFromString(pt.Amount)
 	if err != nil {
-		return 0, fmt.Errorf("invalid amount decimal: %w", err)
+		return "", fmt.Errorf("invalid amount decimal: %w", err)
 	}
 
 	expiresAt := time.Now().Add(15 * time.Minute)
 	pending := PendingTransaction{
-		UserID:          pt.UserID,
+		UserUUID:        pt.UserUUID,
 		ChatID:          pt.ChatID,
 		SourceMessageID: pt.SourceMessageID,
 		Type:            pt.Type,
@@ -48,9 +48,9 @@ func (r *PendingTransactionRepository) Insert(ctx context.Context, pt *transacti
 
 	err = r.db.WithContext(ctx).Create(&pending).Error
 	if err != nil {
-		return 0, fmt.Errorf("pending tx insert: %w", err)
+		return "", fmt.Errorf("pending tx insert: %w", err)
 	}
-	return pending.ID, nil
+	return pending.UUID, nil
 }
 
 func (r *PendingTransactionRepository) FindActiveByChat(ctx context.Context, chatID string) (*transaction.PendingTransactionRow, error) {
@@ -67,8 +67,8 @@ func (r *PendingTransactionRepository) FindActiveByChat(ctx context.Context, cha
 	}
 
 	return &transaction.PendingTransactionRow{
-		ID:              pt.ID,
-		UserID:          pt.UserID,
+		UUID:            pt.UUID,
+		UserUUID:        pt.UserUUID,
 		ChatID:          pt.ChatID,
 		SourceMessageID: pt.SourceMessageID,
 		Type:            pt.Type,
@@ -86,15 +86,15 @@ func (r *PendingTransactionRepository) FindActiveByChat(ctx context.Context, cha
 	}, nil
 }
 
-func (r *PendingTransactionRepository) MarkConfirmed(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&PendingTransaction{}).Where("id = ?", id).Updates(map[string]interface{}{
+func (r *PendingTransactionRepository) MarkConfirmed(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Model(&PendingTransaction{}).Where("uuid = ?", id).Updates(map[string]interface{}{
 		"status":       "confirmed",
 		"confirmed_at": time.Now(),
 	}).Error
 }
 
-func (r *PendingTransactionRepository) MarkCancelled(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&PendingTransaction{}).Where("id = ?", id).Updates(map[string]interface{}{
+func (r *PendingTransactionRepository) MarkCancelled(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Model(&PendingTransaction{}).Where("uuid = ?", id).Updates(map[string]interface{}{
 		"status":       "cancelled",
 		"cancelled_at": time.Now(),
 	}).Error
@@ -107,3 +107,4 @@ func (r *PendingTransactionRepository) ExpireStale(ctx context.Context) error {
 }
 
 var _ transaction.PendingTransactionRepository = (*PendingTransactionRepository)(nil)
+

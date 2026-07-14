@@ -56,28 +56,28 @@ func (h *RefreshMTCacheHandler) ProcessTask(ctx context.Context, _ *asynq.Task) 
 		if key == "" {
 			continue
 		}
-		log.Info().Int64("user_id", u.ID).Msg("refreshing cache for user")
+		log.Info().Str("user_uuid", u.UUID).Msg("refreshing cache for user")
 		mtClient := moneytracker.NewClient(h.mtHost, key, 30*time.Second)
 
 		categories, err := mtClient.GetCategories(ctx)
 		if err != nil {
-			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: get categories failed")
+			log.Error().Err(err).Str("user_uuid", u.UUID).Msg("refresh: get categories failed")
 			continue
 		}
 
-		if err := h.catCacheRepo.Upsert(ctx, u.ID, categories); err != nil {
-			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: upsert categories failed")
+		if err := h.catCacheRepo.Upsert(ctx, u.UUID, categories); err != nil {
+			log.Error().Err(err).Str("user_uuid", u.UUID).Msg("refresh: upsert categories failed")
 			continue
 		}
 
 		accounts, err := mtClient.GetAccounts(ctx)
 		if err != nil {
-			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: get accounts failed")
+			log.Error().Err(err).Str("user_uuid", u.UUID).Msg("refresh: get accounts failed")
 			continue
 		}
 
-		if err := h.accCacheRepo.Upsert(ctx, u.ID, accounts); err != nil {
-			log.Error().Err(err).Int64("user_id", u.ID).Msg("refresh: upsert accounts failed")
+		if err := h.accCacheRepo.Upsert(ctx, u.UUID, accounts); err != nil {
+			log.Error().Err(err).Str("user_uuid", u.UUID).Msg("refresh: upsert accounts failed")
 			continue
 		}
 	}

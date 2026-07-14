@@ -106,7 +106,7 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 		return err
 	}
 
-	log.Info().Int64("inbound_id", id).Str("type", string(msgType)).Msg("enqueuing message processing task to queue")
+	log.Info().Str("inbound_uuid", id).Str("type", string(msgType)).Msg("enqueuing message processing task to queue")
 
 	payload, _ := json.Marshal(map[string]interface{}{
 		"inbound_id":    id,
@@ -123,10 +123,10 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 	task := asynq.NewTask("process:message", payload, asynq.Queue("default"))
 	_, err = s.asynqClient.EnqueueContext(ctx, task)
 	if err != nil {
-		log.Error().Err(err).Int64("inbound_id", id).Msg("enqueuing process task failed")
+		log.Error().Err(err).Str("inbound_uuid", id).Msg("enqueuing process task failed")
 		return fmt.Errorf("enqueue message: %w", err)
 	}
 
-	log.Info().Int64("inbound_id", id).Msg("enqueued process task successfully")
+	log.Info().Str("inbound_uuid", id).Msg("enqueued process task successfully")
 	return nil
 }

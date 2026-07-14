@@ -39,16 +39,16 @@ func NewTransactionService(
 	}
 }
 
-func (s *TransactionService) CreatePending(ctx context.Context, userID int64, chatID, sourceMessageID string, result *ninerouter.AIExtractionResult) (int64, error) {
+func (s *TransactionService) CreatePending(ctx context.Context, userUUID string, chatID, sourceMessageID string, result *ninerouter.AIExtractionResult) (string, error) {
 	logger.Log.Info().Msg("listing categories for transaction creation match")
-	categories, err := s.catCacheRepo.List(ctx, userID)
+	categories, err := s.catCacheRepo.List(ctx, userUUID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	logger.Log.Info().Msg("listing accounts for transaction creation match")
-	accounts, err := s.accCacheRepo.List(ctx, userID)
+	accounts, err := s.accCacheRepo.List(ctx, userUUID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	categoryHint := ""
@@ -65,7 +65,7 @@ func (s *TransactionService) CreatePending(ctx context.Context, userID int64, ch
 	matchedCat := MatchCategory(categoryHint, categories)
 	if matchedCat == nil {
 		logger.Log.Warn().Str("hint", categoryHint).Msg("category hint could not be matched")
-		return 0, fmt.Errorf("%w: %s", apperrors.ErrUnknownCategory, categoryHint)
+		return "", fmt.Errorf("%w: %s", apperrors.ErrUnknownCategory, categoryHint)
 	}
 	logger.Log.Info().Str("category_id", matchedCat.CategoryID).Str("title", matchedCat.Title).Msg("matched category successfully")
 
@@ -100,7 +100,7 @@ func (s *TransactionService) CreatePending(ctx context.Context, userID int64, ch
 	amount := decimal.NewFromFloat(*result.Amount)
 
 	insert := &transaction.PendingTransactionInsert{
-		UserID:          userID,
+		UserUUID:        userUUID,
 		ChatID:          chatID,
 		SourceMessageID: sourceMessageID,
 		Type:            txType,
@@ -119,12 +119,12 @@ func (s *TransactionService) CreatePending(ctx context.Context, userID int64, ch
 	return s.pendingRepo.Insert(ctx, insert)
 }
 
-func (s *TransactionService) Commit(ctx context.Context, pendingID int64, pending *transaction.PendingTransactionRow, mtClient moneytracker.MoneyTrackerClient) (*transaction.CreatedTransaction, error) {
-	logger.Log.Info().Int64("pending_id", pendingID).Msg("committing pending transaction")
+func (s *TransactionService) Commit(ctx context.Context, pendingUUID string, pending *transaction.PendingTransactionRow, mtClient moneytracker.MoneyTrackerClient) (*transaction.CreatedTransaction, error) {
+	logger.Log.Info().Str("pending_uuid", pendingUUID).Msg("committing pending transaction")
 
 	amount, err := decimal.NewFromString(pending.Amount)
 	if err != nil {
-		logger.Log.Error().Err(err).Int64("pending_id", pendingID).Msg("parse amount string failed")
+		logger.Log.Error().Err(err).Str("pending_uuid", pendingUUID).Msg("parse amount string failed")
 		return nil, fmt.Errorf("invalid amount: %w", err)
 	}
 
@@ -144,28 +144,28 @@ func (s *TransactionService) Commit(ctx context.Context, pendingID int64, pendin
 	}
 
 	reqJSON, _ := json.Marshal(req)
-	logger.Log.Info().Int64("pending_id", pendingID).Msg("inserting transaction submission record into database")
-	subID, err := s.submissionRepo.Insert(ctx, &transaction.SubmissionInsert{
-		PendingTransactionID: pendingID,
-		RequestSnapshotJSON:  string(reqJSON),
+	logger.Log.Info().Str("pending_uuid", pendingUUID).Msg("inserting transaction submission record into database")
+	subUUID, err := s.submissionRepo.Insert(ctx, &transaction.SubmissionInsert{
+		PendingTransactionUUID: pendingUUID,
+		RequestSnapshotJSON:    string(reqJSON),
 	})
 	if err != nil {
-		logger.Log.Error().Err(err).Int64("pending_id", pendingID).Msg("insert transaction submission failed")
+		logger.Log.Error().Err(err).Str("pending_uuid", pendingUUID).Msg("insert transaction submission failed")
 		return nil, fmt.Errorf("insert submission: %w", err)
 	}
 
-	logger.Log.Info().Int64("submission_id", subID).Msg("posting transaction payload to money tracker api")
+	logger.Log.Info().Str("submission_uuid", subUUID).Msg("posting transaction payload to money tracker api")
 	created, err := mtClient.AddTransaction(ctx, req)
 	if err != nil {
-		logger.Log.Warn().Err(err).Int64("submission_id", subID).Msg("money tracker api call failed, updating submission to failed")
-		_ = s.submissionRepo.UpdateFailed(ctx, subID, err.Error())
+		logger.Log.Warn().Err(err).Str("submission_uuid", subUUID).Msg("money tracker api call failed, updating submission to failed")
+		_ = s.submissionRepo.UpdateFailed(ctx, subUUID, err.Error())
 		return nil, err
 	}
 
 	respJSON, _ := json.Marshal(created)
-	logger.Log.Info().Int64("submission_id", subID).Str("mt_tx_id", created.ID).Msg("money tracker transaction recorded successfully, updating submission success")
-	_ = s.submissionRepo.UpdateSuccess(ctx, subID, created.ID, string(respJSON))
-	_ = s.pendingRepo.MarkConfirmed(ctx, pendingID)
+	logger.Log.Info().Str("submission_uuid", subUUID).Str("mt_tx_id", created.ID).Msg("money tracker transaction recorded successfully, updating submission success")
+	_ = s.submissionRepo.UpdateSuccess(ctx, subUUID, created.ID, string(respJSON))
+	_ = s.pendingRepo.MarkConfirmed(ctx, pendingUUID)
 
 	return created, nil
 }

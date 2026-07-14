@@ -78,10 +78,10 @@ func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, co
 		return err
 	}
 
-	log.Info().Int64("pending_id", pending.ID).Msg("found active pending transaction, committing to money tracker")
-	created, err := s.txService.Commit(ctx, pending.ID, pending, mtClient)
+	log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, committing to money tracker")
+	created, err := s.txService.Commit(ctx, pending.UUID, pending, mtClient)
 	if err != nil {
-		log.Error().Err(err).Int64("pending_id", pending.ID).Msg("transaction commit failed")
+		log.Error().Err(err).Str("pending_uuid", pending.UUID).Msg("transaction commit failed")
 		if errors.Is(err, apperrors.ErrMoneyTrackerRejected) {
 			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Kyaa, gagal nyimpen ke Money Tracker desu 😢 Gomen ne~ Coba lagi nanti ya!", replyToID)
 		}
@@ -94,7 +94,7 @@ func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, co
 		money.FormatRupiah(amount),
 		pending.TransactionDate,
 	)
-	log.Info().Int64("pending_id", pending.ID).Str("mt_tx_id", created.ID).Msg("transaction committed successfully, sending success reply")
+	log.Info().Str("pending_uuid", pending.UUID).Str("mt_tx_id", created.ID).Msg("transaction committed successfully, sending success reply")
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, replyToID)
 }
 
@@ -112,9 +112,9 @@ func (s *ConfirmationService) cancel(ctx context.Context, chatID, replyToID, cor
 		return err
 	}
 
-	log.Info().Int64("pending_id", pending.ID).Msg("found active pending transaction, marking cancelled in database")
-	_ = s.pendingRepo.MarkCancelled(ctx, pending.ID)
-	log.Info().Int64("pending_id", pending.ID).Msg("transaction cancelled successfully, sending cancel reply")
+	log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, marking cancelled in database")
+	_ = s.pendingRepo.MarkCancelled(ctx, pending.UUID)
+	log.Info().Str("pending_uuid", pending.UUID).Msg("transaction cancelled successfully, sending cancel reply")
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, "❌ Wakatta, transaksinya dibatalin desu~ 🌸 Daijoubu ne!", replyToID)
 }
 

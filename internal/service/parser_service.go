@@ -57,16 +57,16 @@ func NewParserService(
 	}
 }
 
-func (s *ParserService) ParseText(ctx context.Context, userID int64, text string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
+func (s *ParserService) ParseText(ctx context.Context, userUUID string, text string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
 	logger.Log.Info().Msg("fetching category list from database cache")
-	categories, err := s.catCacheRepo.List(ctx, userID)
+	categories, err := s.catCacheRepo.List(ctx, userUUID)
 	if err != nil {
 		return nil, fmt.Errorf("load categories: %w", err)
 	}
 	logger.Log.Info().Int("count", len(categories)).Msg("categories retrieved successfully")
 
 	logger.Log.Info().Msg("fetching account list from database cache")
-	accounts, err := s.accCacheRepo.List(ctx, userID)
+	accounts, err := s.accCacheRepo.List(ctx, userUUID)
 	if err != nil {
 		return nil, fmt.Errorf("load accounts: %w", err)
 	}
@@ -84,7 +84,7 @@ func (s *ParserService) ParseText(ctx context.Context, userID int64, text string
 	return s.callAI(ctx, s.nineRouter.Model(), prompt, nil)
 }
 
-func (s *ParserService) ParseImage(ctx context.Context, userID int64, messageID, phone, caption string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
+func (s *ParserService) ParseImage(ctx context.Context, userUUID string, messageID, phone, caption string, mtClient moneytracker.MoneyTrackerClient) (*ninerouter.AIExtractionResult, error) {
 	logger.Log.Info().Str("message_id", messageID).Str("phone", phone).Msg("downloading message media via gowa client")
 	imgBytes, mimeType, err := s.gowaClient.DownloadMessageMedia(ctx, s.deviceID, messageID, phone)
 	if err != nil {
@@ -101,14 +101,14 @@ func (s *ParserService) ParseImage(ctx context.Context, userID int64, messageID,
 	}
 
 	logger.Log.Info().Msg("fetching category list from database cache")
-	categories, err := s.catCacheRepo.List(ctx, userID)
+	categories, err := s.catCacheRepo.List(ctx, userUUID)
 	if err != nil {
 		return nil, fmt.Errorf("load categories: %w", err)
 	}
 	logger.Log.Info().Int("count", len(categories)).Msg("categories retrieved successfully")
 
 	logger.Log.Info().Msg("fetching account list from database cache")
-	accounts, err := s.accCacheRepo.List(ctx, userID)
+	accounts, err := s.accCacheRepo.List(ctx, userUUID)
 	if err != nil {
 		return nil, fmt.Errorf("load accounts: %w", err)
 	}
