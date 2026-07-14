@@ -73,3 +73,30 @@ func ParseAndValidate(raw string) (*AIExtractionResult, error) {
 
 	return &result, nil
 }
+
+type WastefulAnalysisResult struct {
+	Wasteful bool   `json:"wasteful"`
+	Reason   string `json:"reason"`
+}
+
+func ParseWasteful(raw string) (*WastefulAnalysisResult, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "```") {
+		lines := strings.Split(raw, "\n")
+		var inner []string
+		for _, line := range lines {
+			if strings.HasPrefix(line, "```") {
+				continue
+			}
+			inner = append(inner, line)
+		}
+		raw = strings.Join(inner, "\n")
+	}
+
+	var result WastefulAnalysisResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil, fmt.Errorf("parse wasteful: %w", err)
+	}
+	return &result, nil
+}
+

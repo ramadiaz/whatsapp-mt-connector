@@ -320,8 +320,23 @@ func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p Pr
 	}
 
 	txTypeLabel := "Pengeluaran"
+	isExpense := txType == nil || *txType == "expense"
 	if txType != nil && *txType == "income" {
 		txTypeLabel = "Pemasukan"
+		isExpense = false
+	}
+
+	if isExpense && amountPtr != nil {
+		log := logger.WithCorrelationID(p.CorrelationID)
+		log.Info().Str("remark", remark).Str("category", cat).Float64("amount", *amountPtr).Msg("analyzing wasteful spending")
+		wasteful, reason, err := h.parserSvc.AnalyzeWasteful(ctx, remark, cat, *amountPtr)
+		if err != nil {
+			log.Warn().Err(err).Msg("wasteful analysis failed, skipping warning")
+		} else if wasteful {
+			log.Info().Str("reason", reason).Msg("wasteful spending detected, sending warning bubble")
+			warningMsg := fmt.Sprintf("...a-ano... (ini agak canggung buat aku bilang tapi) ...kayaknya transaksi ini masuk kategori boros deh... 😶\n\n_%s_\n\n...(aku cuma mau ngingetin aja. Keuanganmu penting. ...maaf kalau lancang)", reason)
+			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, warningMsg, replyToID)
+		}
 	}
 
 	msg := fmt.Sprintf(`...o-oh, aku nangkep transaksinya... (semoga bener) 🎸
@@ -344,6 +359,7 @@ Catatan: %s
 
 	return h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, replyToID)
 }
+
 
 func (h *ProcessMessageHandler) getMissingFields(result *ninerouter.AIExtractionResult) []string {
 	var missing []string

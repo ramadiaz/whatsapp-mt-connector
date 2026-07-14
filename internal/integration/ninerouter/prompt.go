@@ -97,3 +97,21 @@ Respond with JSON only matching this exact schema:
 		captionPart,
 	)
 }
+
+func BuildWastefulPrompt(remark, category string, amount float64) string {
+	return fmt.Sprintf(`You are a personal finance advisor analyzing Indonesian spending habits.
+Determine if this expense is wasteful or unnecessary based on Indonesian lifestyle context.
+Consider: luxury items, frequent small indulgences, overpriced alternatives, non-essential splurges.
+Do not explain your reasoning. Return valid JSON only.
+
+Expense details:
+- Remark: %s
+- Category: %s
+- Amount: Rp %.0f
+
+Respond with JSON only matching this exact schema:
+{
+  "wasteful": <true|false>,
+  "reason": "<short Indonesian sentence explaining why, or empty string if not wasteful>"
+}`, remark, category, amount)
+}
