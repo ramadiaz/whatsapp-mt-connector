@@ -72,7 +72,7 @@ func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, co
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNoPendingTransaction) {
 			log.Warn().Str("chat_id", chatID).Msg("no active pending transaction found for confirmation request")
-			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Eeh? Nggak ada transaksi yang nunggu konfirmasi desu~ 🥺", replyToID)
+			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...e-eh... (aku mesti bilang apa) ...kayaknya nggak ada transaksi yang lagi nunggu konfirmasi... 😶", replyToID)
 		}
 		log.Error().Err(err).Str("chat_id", chatID).Msg("failed finding active pending transaction")
 		return err
@@ -83,13 +83,13 @@ func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, co
 	if err != nil {
 		log.Error().Err(err).Str("pending_uuid", pending.UUID).Msg("transaction commit failed")
 		if errors.Is(err, apperrors.ErrMoneyTrackerRejected) {
-			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Kyaa, gagal nyimpen ke Money Tracker desu 😢 Gomen ne~ Coba lagi nanti ya!", replyToID)
+			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...a-ada yang salah waktu nyimpen ke Money Tracker... (aku udah coba tapi tetep gagal) ...m-maaf ya. Coba lagi nanti... 😔", replyToID)
 		}
 		return err
 	}
 
 	amount, _ := decimal.NewFromString(pending.Amount)
-	msg := fmt.Sprintf("✅ Yatta~! Transaksinya berhasil disimpan desu! 🎉💖\n\nID: %s\nJumlah: %s\nTanggal: %s",
+	msg := fmt.Sprintf("...b-berhasil disimpan... (aku nggak nyangka selancar ini) 🎸\n\nID: %s\nJumlah: %s\nTanggal: %s\n\n...makasih udah percaya aku.",
 		created.ID,
 		money.FormatRupiah(amount),
 		pending.TransactionDate,
@@ -106,7 +106,7 @@ func (s *ConfirmationService) cancel(ctx context.Context, chatID, replyToID, cor
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNoPendingTransaction) {
 			log.Warn().Str("chat_id", chatID).Msg("no active pending transaction found for cancellation request")
-			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Eeh? Nggak ada transaksi yang perlu dibatalin desu~ 🥺", replyToID)
+			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...e-eh... (aku mesti bilang apa) ...kayaknya nggak ada transaksi yang perlu dibatalin... 😶", replyToID)
 		}
 		log.Error().Err(err).Str("chat_id", chatID).Msg("failed finding active pending transaction")
 		return err
@@ -115,13 +115,13 @@ func (s *ConfirmationService) cancel(ctx context.Context, chatID, replyToID, cor
 	log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, marking cancelled in database")
 	_ = s.pendingRepo.MarkCancelled(ctx, pending.UUID)
 	log.Info().Str("pending_uuid", pending.UUID).Msg("transaction cancelled successfully, sending cancel reply")
-	return s.gowaClient.SendText(ctx, s.deviceID, chatID, "❌ Wakatta, transaksinya dibatalin desu~ 🌸 Daijoubu ne!", replyToID)
+	return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...o-oke... transaksinya udah dibatalin... (ini bukan berarti gagal, cuma dibatalin) ...nggak apa-apa kok. 🙏", replyToID)
 }
 
 func confirmHelpText() string {
-	return `🤖✨ *Money Tracker Bot desu~!*
+	return `...a-ano... (aku nggak biasa ngomong depan orang tapi ini penting) ...aku Money Tracker Bot... 🎸
 
-Konnichiwa~! Hajimemashite, aku siap bantu catat transaksi kamu! 💕
+(Deep breath) ...ini cara pakainya:
 
 *Format input:*
 • catat kopi susu 25k
@@ -135,8 +135,8 @@ Konnichiwa~! Hajimemashite, aku siap bantu catat transaksi kamu! 💕
 • income | 1500000 | salary | freelance | 2026-07-03
 
 *Konfirmasi:*
-• Balas *ya* untuk menyimpan~ 💾
-• Balas *batal* untuk membatalkan ❌
+• Balas *ya* untuk menyimpan
+• Balas *batal* untuk membatalkan
 
-Ganbare~! Aku selalu ada buat kamu desu! 🌸🎀`
+...s-semoga membantu. (aku nggak tau gimana caranya terlihat lebih ramah dari ini)`
 }
