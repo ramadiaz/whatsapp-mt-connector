@@ -80,3 +80,40 @@ func (c *Client) GetTransactions(ctx context.Context, limit int) ([]transaction.
 	}
 	return txs, nil
 }
+
+func (c *Client) GetTransactionsDateRange(ctx context.Context, startDate, endDate string) ([]transaction.MTTransaction, error) {
+	form := url.Values{}
+	form.Set("start_date", startDate)
+	form.Set("end_date", endDate)
+	form.Set("limit", "500")
+
+	result, err := c.post(ctx, "/getTransactions", form)
+	if err != nil {
+		return nil, fmt.Errorf("moneytracker get transactions date range: %w", err)
+	}
+	if result.Status != 1 {
+		return nil, fmt.Errorf("moneytracker get transactions date range: %s", result.Msg)
+	}
+
+	var raw []struct {
+		ID                          string      `json:"id"`
+		Type                        json.Number `json:"type"`
+		IncomeExpenditureCategoryID string      `json:"income_expenditure_category_id"`
+		Remark                      string      `json:"remark"`
+	}
+	if err := json.Unmarshal(result.Data, &raw); err != nil {
+		return nil, fmt.Errorf("moneytracker get transactions date range decode: %w", err)
+	}
+
+	txs := make([]transaction.MTTransaction, len(raw))
+	for i, r := range raw {
+		t, _ := strconv.Atoi(r.Type.String())
+		txs[i] = transaction.MTTransaction{
+			ID:                          r.ID,
+			Type:                        t,
+			IncomeExpenditureCategoryID: r.IncomeExpenditureCategoryID,
+			Remark:                      r.Remark,
+		}
+	}
+	return txs, nil
+}

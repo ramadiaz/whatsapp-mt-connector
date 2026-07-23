@@ -56,3 +56,12 @@ func (r *UserRepository) FindByUUID(ctx context.Context, uuid string) (*User, er
 	return &user, nil
 }
 
+func (r *UserRepository) FindUsersWithAPIKey(ctx context.Context) ([]User, error) {
+	var users []User
+	err := r.db.WithContext(ctx).Where("mt_api_key IS NOT NULL AND mt_api_key != ''").Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("find users with api key: %w", err)
+	}
+	return users, nil
+}
+

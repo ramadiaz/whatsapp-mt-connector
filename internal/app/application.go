@@ -103,11 +103,13 @@ func Run() error {
 
 	processHandler := jobs.NewProcessMessageHandler(inboundRepo, userRepo, parserSvc, txSvc, confirmationSvc, gowaClient, cfg.GOWADeviceID, cfg.AllowedNumbers, cfg.MTAPIKey, cfg.MTHost)
 	refreshHandler := jobs.NewRefreshMTCacheHandler(db, userRepo, catCacheRepo, accCacheRepo, cfg.MTHost, cfg.MTAPIKey)
+	reminderHandler := jobs.NewDailyReminderHandler(userRepo, gowaClient, cfg.GOWADeviceID, cfg.MTHost)
 
 	asynqServer := redisqueue.NewAsynqServer(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(jobs.TypeProcessMessage, processHandler.ProcessTask)
 	mux.HandleFunc(jobs.TypeRefreshMTCache, refreshHandler.ProcessTask)
+	mux.HandleFunc(jobs.TypeDailyReminder, reminderHandler.ProcessTask)
 
 	log.Info().Msg("registering cache refresh schedule")
 	scheduler := redisqueue.NewAsynqScheduler(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
@@ -115,6 +117,12 @@ func Run() error {
 	_, err = scheduler.Register(ttl, jobs.NewRefreshCacheTask())
 	if err != nil {
 		log.Warn().Err(err).Msg("register scheduler")
+	}
+
+	log.Info().Msg("registering daily transaction reminder schedule")
+	_, err = scheduler.Register("CRON_TZ=Asia/Jakarta 0 20 * * *", jobs.NewDailyReminderTask())
+	if err != nil {
+		log.Warn().Err(err).Msg("register daily reminder scheduler")
 	}
 
 	log.Info().Msg("triggering initial mt cache refresh")
