@@ -40,6 +40,13 @@ func NewTransactionService(
 }
 
 func (s *TransactionService) CreatePending(ctx context.Context, userUUID string, chatID, sourceMessageID string, result *ninerouter.AIExtractionResult) (string, error) {
+	if len(result.Transactions) == 0 {
+		return "", fmt.Errorf("no transaction items found in AI extraction result")
+	}
+	return s.CreatePendingItem(ctx, userUUID, chatID, sourceMessageID, &result.Transactions[0])
+}
+
+func (s *TransactionService) CreatePendingItem(ctx context.Context, userUUID string, chatID, sourceMessageID string, item *ninerouter.TransactionItem) (string, error) {
 	logger.Log.Info().Msg("listing categories for transaction creation match")
 	categories, err := s.catCacheRepo.List(ctx, userUUID)
 	if err != nil {
@@ -52,13 +59,13 @@ func (s *TransactionService) CreatePending(ctx context.Context, userUUID string,
 	}
 
 	categoryHint := ""
-	if result.CategoryHint != nil {
-		categoryHint = *result.CategoryHint
+	if item.CategoryHint != nil {
+		categoryHint = *item.CategoryHint
 	}
 
 	accountHint := ""
-	if result.AccountHint != nil {
-		accountHint = *result.AccountHint
+	if item.AccountHint != nil {
+		accountHint = *item.AccountHint
 	}
 
 	logger.Log.Info().Str("hint", categoryHint).Msg("attempting to match transaction category hint")
@@ -83,21 +90,21 @@ func (s *TransactionService) CreatePending(ctx context.Context, userUUID string,
 	}
 
 	txType := "expense"
-	if result.Type != nil {
-		txType = *result.Type
+	if item.Type != nil {
+		txType = *item.Type
 	}
 
 	date := timeutil.TodayJakarta()
-	if result.Date != nil && *result.Date != "" {
-		date = *result.Date
+	if item.Date != nil && *item.Date != "" {
+		date = *item.Date
 	}
 
 	remark := ""
-	if result.Remark != nil {
-		remark = *result.Remark
+	if item.Remark != nil {
+		remark = *item.Remark
 	}
 
-	amount := decimal.NewFromFloat(*result.Amount)
+	amount := decimal.NewFromFloat(*item.Amount)
 
 	insert := &transaction.PendingTransactionInsert{
 		UserUUID:        userUUID,
@@ -105,14 +112,14 @@ func (s *TransactionService) CreatePending(ctx context.Context, userUUID string,
 		SourceMessageID: sourceMessageID,
 		Type:            txType,
 		Amount:          amount.String(),
-		CurrencyCode:    result.CurrencyCode,
+		CurrencyCode:    item.CurrencyCode,
 		CategoryHint:    categoryHint,
 		CategoryID:      categoryID,
 		AccountHint:     accountHint,
 		AccountID:       accountID,
 		TransactionDate: date,
 		Remark:          remark,
-		Confidence:      result.Confidence,
+		Confidence:      item.Confidence,
 	}
 
 	logger.Log.Info().Str("chat_id", chatID).Str("amount", insert.Amount).Msg("inserting pending transaction into database")

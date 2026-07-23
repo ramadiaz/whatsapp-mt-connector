@@ -8,8 +8,7 @@ import (
 	apperrors "github.com/ramadiaz/whatsapp-mt-connector/internal/shared/errors"
 )
 
-type AIExtractionResult struct {
-	Intent            string   `json:"intent"`
+type TransactionItem struct {
 	Type              *string  `json:"type"`
 	Amount            *float64 `json:"amount"`
 	CurrencyCode      string   `json:"currency_code"`
@@ -22,6 +21,23 @@ type AIExtractionResult struct {
 	MissingFields     []string `json:"missing_fields"`
 	IsWasteful        *bool    `json:"is_wasteful"`
 	WastefulReason    *string  `json:"wasteful_reason"`
+}
+
+type AIExtractionResult struct {
+	Intent            string            `json:"intent"`
+	Transactions      []TransactionItem `json:"transactions"`
+	Type              *string           `json:"type,omitempty"`
+	Amount            *float64          `json:"amount,omitempty"`
+	CurrencyCode      string            `json:"currency_code,omitempty"`
+	CategoryHint      *string           `json:"category_hint,omitempty"`
+	AccountHint       *string           `json:"account_hint,omitempty"`
+	Date              *string           `json:"date,omitempty"`
+	Remark            *string           `json:"remark,omitempty"`
+	Confidence        float64           `json:"confidence,omitempty"`
+	NeedsConfirmation bool              `json:"needs_confirmation,omitempty"`
+	MissingFields     []string          `json:"missing_fields,omitempty"`
+	IsWasteful        *bool             `json:"is_wasteful,omitempty"`
+	WastefulReason    *string           `json:"wasteful_reason,omitempty"`
 }
 
 var allowedIntents = map[string]bool{
@@ -63,13 +79,35 @@ func ParseAndValidate(raw string) (*AIExtractionResult, error) {
 		return nil, fmt.Errorf("%w: unknown intent %q", apperrors.ErrInvalidAIResponse, result.Intent)
 	}
 
-	if result.Type != nil && *result.Type != "" && !allowedTypes[*result.Type] {
-		return nil, fmt.Errorf("%w: unknown type %q", apperrors.ErrInvalidAIResponse, *result.Type)
+	if len(result.Transactions) == 0 {
+		if result.Type != nil || result.Amount != nil || result.CategoryHint != nil || result.Intent == "create_transaction" {
+			singleItem := TransactionItem{
+				Type:              result.Type,
+				Amount:            result.Amount,
+				CurrencyCode:      result.CurrencyCode,
+				CategoryHint:      result.CategoryHint,
+				AccountHint:       result.AccountHint,
+				Date:              result.Date,
+				Remark:            result.Remark,
+				Confidence:        result.Confidence,
+				NeedsConfirmation: result.NeedsConfirmation,
+				MissingFields:     result.MissingFields,
+				IsWasteful:        result.IsWasteful,
+				WastefulReason:    result.WastefulReason,
+			}
+			result.Transactions = []TransactionItem{singleItem}
+		}
 	}
 
-	if result.Intent == "create_transaction" {
-		if result.Amount == nil || *result.Amount <= 0 {
-			return nil, fmt.Errorf("%w: amount must be > 0", apperrors.ErrInvalidAIResponse)
+	for i := range result.Transactions {
+		tx := &result.Transactions[i]
+		if tx.Type != nil && *tx.Type != "" && !allowedTypes[*tx.Type] {
+			return nil, fmt.Errorf("%w: unknown type %q", apperrors.ErrInvalidAIResponse, *tx.Type)
+		}
+		if result.Intent == "create_transaction" {
+			if tx.Amount == nil || *tx.Amount <= 0 {
+				return nil, fmt.Errorf("%w: amount must be > 0", apperrors.ErrInvalidAIResponse)
+			}
 		}
 	}
 

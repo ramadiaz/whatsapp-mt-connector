@@ -12,6 +12,8 @@ type InboundRepository interface {
 type PendingTransactionRepository interface {
 	Insert(ctx context.Context, pt *PendingTransactionInsert) (string, error)
 	FindActiveByChat(ctx context.Context, chatID string) (*PendingTransactionRow, error)
+	FindAllActiveByChat(ctx context.Context, chatID string) ([]*PendingTransactionRow, error)
+	FindByUUID(ctx context.Context, uuid string) (*PendingTransactionRow, error)
 	MarkConfirmed(ctx context.Context, id string) error
 	MarkCancelled(ctx context.Context, id string) error
 	ExpireStale(ctx context.Context) error

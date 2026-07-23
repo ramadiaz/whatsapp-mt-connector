@@ -67,54 +67,76 @@ func (s *ConfirmationService) IsConfirmationCommand(text string) bool {
 func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, correlationID string, mtClient moneytracker.MoneyTrackerClient) error {
 	log := logger.WithCorrelationID(correlationID)
 
-	log.Info().Str("chat_id", chatID).Msg("searching for active pending transaction")
-	pending, err := s.pendingRepo.FindActiveByChat(ctx, chatID)
+	log.Info().Str("chat_id", chatID).Msg("searching for active pending transactions")
+	pendings, err := s.pendingRepo.FindAllActiveByChat(ctx, chatID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNoPendingTransaction) {
 			log.Warn().Str("chat_id", chatID).Msg("no active pending transaction found for confirmation request")
 			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...e-eh... (aku mesti bilang apa) ...kayaknya nggak ada transaksi yang lagi nunggu konfirmasi... 😶", replyToID)
 		}
-		log.Error().Err(err).Str("chat_id", chatID).Msg("failed finding active pending transaction")
+		log.Error().Err(err).Str("chat_id", chatID).Msg("failed finding active pending transactions")
 		return err
 	}
 
-	log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, committing to money tracker")
-	created, err := s.txService.Commit(ctx, pending.UUID, pending, mtClient)
-	if err != nil {
-		log.Error().Err(err).Str("pending_uuid", pending.UUID).Msg("transaction commit failed")
-		if errors.Is(err, apperrors.ErrMoneyTrackerRejected) {
-			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...a-ada yang salah waktu nyimpen ke Money Tracker... (aku udah coba tapi tetep gagal) ...m-maaf ya. Coba lagi nanti... 😔", replyToID)
+	var committed []*transaction.CreatedTransaction
+	var committedPendings []*transaction.PendingTransactionRow
+	for _, pending := range pendings {
+		log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, committing to money tracker")
+		created, err := s.txService.Commit(ctx, pending.UUID, pending, mtClient)
+		if err != nil {
+			log.Error().Err(err).Str("pending_uuid", pending.UUID).Msg("transaction commit failed")
+			if errors.Is(err, apperrors.ErrMoneyTrackerRejected) {
+				return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...a-ada yang salah waktu nyimpen ke Money Tracker... (aku udah coba tapi tetep gagal) ...m-maaf ya. Coba lagi nanti... 😔", replyToID)
+			}
+			return err
 		}
-		return err
+		committed = append(committed, created)
+		committedPendings = append(committedPendings, pending)
 	}
 
-	amount, _ := decimal.NewFromString(pending.Amount)
-	msg := fmt.Sprintf("...b-berhasil disimpan... (aku nggak nyangka selancar ini) 🎸\n\nID: %s\nJumlah: %s\nTanggal: %s\n\n...makasih udah percaya aku.",
-		created.ID,
-		money.FormatRupiah(amount),
-		pending.TransactionDate,
-	)
-	log.Info().Str("pending_uuid", pending.UUID).Str("mt_tx_id", created.ID).Msg("transaction committed successfully, sending success reply")
+	var msg string
+	if len(committed) == 1 {
+		amount, _ := decimal.NewFromString(committedPendings[0].Amount)
+		msg = fmt.Sprintf("...b-berhasil disimpan... (aku nggak nyangka selancar ini) 🎸\n\nID: %s\nJumlah: %s\nTanggal: %s\n\n...makasih udah percaya aku.",
+			committed[0].ID,
+			money.FormatRupiah(amount),
+			committedPendings[0].TransactionDate,
+		)
+	} else {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("...b-berhasil disimpan %d transaksi... (aku nggak nyangka selancar ini) 🎸\n\n", len(committed)))
+		for i, c := range committed {
+			p := committedPendings[i]
+			amount, _ := decimal.NewFromString(p.Amount)
+			sb.WriteString(fmt.Sprintf("• ID: %s | %s (%s)\n", c.ID, money.FormatRupiah(amount), p.Remark))
+		}
+		sb.WriteString("\n...makasih udah percaya aku.")
+		msg = sb.String()
+	}
+
+	log.Info().Int("count", len(committed)).Msg("transactions committed successfully, sending success reply")
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, replyToID)
 }
 
 func (s *ConfirmationService) cancel(ctx context.Context, chatID, replyToID, correlationID string) error {
 	log := logger.WithCorrelationID(correlationID)
 
-	log.Info().Str("chat_id", chatID).Msg("searching for active pending transaction to cancel")
-	pending, err := s.pendingRepo.FindActiveByChat(ctx, chatID)
+	log.Info().Str("chat_id", chatID).Msg("searching for active pending transactions to cancel")
+	pendings, err := s.pendingRepo.FindAllActiveByChat(ctx, chatID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNoPendingTransaction) {
 			log.Warn().Str("chat_id", chatID).Msg("no active pending transaction found for cancellation request")
 			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...e-eh... (aku mesti bilang apa) ...kayaknya nggak ada transaksi yang perlu dibatalin... 😶", replyToID)
 		}
-		log.Error().Err(err).Str("chat_id", chatID).Msg("failed finding active pending transaction")
+		log.Error().Err(err).Str("chat_id", chatID).Msg("failed finding active pending transactions")
 		return err
 	}
 
-	log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, marking cancelled in database")
-	_ = s.pendingRepo.MarkCancelled(ctx, pending.UUID)
-	log.Info().Str("pending_uuid", pending.UUID).Msg("transaction cancelled successfully, sending cancel reply")
+	for _, pending := range pendings {
+		log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, marking cancelled in database")
+		_ = s.pendingRepo.MarkCancelled(ctx, pending.UUID)
+	}
+	log.Info().Msg("transactions cancelled successfully, sending cancel reply")
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, "...o-oke... transaksinya udah dibatalin... (ini bukan berarti gagal, cuma dibatalin) ...nggak apa-apa kok. 🙏", replyToID)
 }
 

@@ -51,7 +51,7 @@ func (h *RetryTransactionHandler) ProcessTask(ctx context.Context, t *asynq.Task
 	log := logger.WithCorrelationID(p.CorrelationID)
 	log.Info().Str("pending_uuid", p.PendingTransactionUUID).Msg("retrying pending transaction")
 
-	pending, err := h.pendingRepo.FindActiveByChat(ctx, p.PendingTransactionUUID)
+	pending, err := h.pendingRepo.FindByUUID(ctx, p.PendingTransactionUUID)
 	if err != nil {
 		log.Error().Err(err).Str("pending_uuid", p.PendingTransactionUUID).Msg("retry: find pending failed")
 		return err

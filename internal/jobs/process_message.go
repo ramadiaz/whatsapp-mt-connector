@@ -197,24 +197,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			return h.handleParseError(ctx, p, err)
 		}
 
-		missing := h.getMissingFields(result)
-		if len(missing) > 0 {
-			log.Info().Interface("missing_fields", missing).Msg("missing crucial transaction fields, prompt verification")
-			msg := fmt.Sprintf("...h-hmm... (aku takut salah ngomong ini tapi) ...sepertinya transaksinya masih kurang %s... Um, bisa ditambahin? ...maaf.", strings.Join(missing, ", "))
-			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
-			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
-			return nil
-		}
-
-		log.Info().Msg("image parsed successfully, creating pending transaction record")
-		pendingUUID, err := h.txSvc.CreatePending(ctx, user.UUID, p.ChatID, p.MessageID, result)
-		if err != nil {
-			log.Error().Err(err).Msg("creating pending transaction record from image failed")
-			return h.handleParseError(ctx, p, err)
-		}
-
-		log.Info().Str("pending_uuid", pendingUUID).Msg("sending confirmation prompt to user")
-		return h.sendConfirmationPrompt(ctx, p, result, p.MessageID)
+		return h.handleExtractionResult(ctx, p, user, result)
 	}
 
 	text := p.Body
@@ -245,30 +228,87 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return nil
 	}
 
-	missing := h.getMissingFields(result)
-	if len(missing) > 0 {
-		log.Info().Interface("missing_fields", missing).Msg("missing crucial transaction fields, prompt verification")
-		msg := fmt.Sprintf("...h-hmm... (aku takut salah ngomong ini tapi) ...sepertinya transaksinya masih kurang %s... Um, bisa ditambahin? ...maaf.", strings.Join(missing, ", "))
-		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, p.MessageID)
+	return h.handleExtractionResult(ctx, p, user, result)
+}
+
+func (h *ProcessMessageHandler) handleExtractionResult(ctx context.Context, p ProcessMessagePayload, user *postgres.User, result *ninerouter.AIExtractionResult) error {
+	log := logger.WithCorrelationID(p.CorrelationID)
+
+	type itemMissingInfo struct {
+		index   int
+		remark  string
+		missing []string
+	}
+
+	var incomplete []itemMissingInfo
+	for i, item := range result.Transactions {
+		missing := h.getItemMissingFields(item)
+		if len(missing) > 0 {
+			remark := ""
+			if item.Remark != nil {
+				remark = *item.Remark
+			}
+			incomplete = append(incomplete, itemMissingInfo{
+				index:   i + 1,
+				remark:  remark,
+				missing: missing,
+			})
+		}
+	}
+
+	if len(incomplete) > 0 {
+		log.Info().Interface("incomplete_items", incomplete).Msg("missing crucial transaction fields in extracted items")
+		var sb strings.Builder
+		sb.WriteString("...h-hmm... (aku takut salah ngomong ini tapi) ...ada transaksi yang parameternya kurang... 😶\n\n")
+		for _, inc := range incomplete {
+			if inc.remark != "" {
+				sb.WriteString(fmt.Sprintf("• Transaksi %d (\"%s\"): kurang %s\n", inc.index, inc.remark, strings.Join(inc.missing, ", ")))
+			} else {
+				sb.WriteString(fmt.Sprintf("• Transaksi %d: kurang %s\n", inc.index, strings.Join(inc.missing, ", ")))
+			}
+		}
+		sb.WriteString("\nUm, bisa dilengkapi dulu? ...maaf ya.")
+		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, sb.String(), p.MessageID)
 		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 		return nil
 	}
 
-	log.Info().Msg("creating pending transaction from parsed text")
-	pendingUUID, err := h.txSvc.CreatePending(ctx, user.UUID, p.ChatID, p.MessageID, result)
-	if err != nil {
-		log.Error().Err(err).Msg("creating pending transaction from parsed text failed")
-		return h.handleParseError(ctx, p, err)
+	for _, item := range result.Transactions {
+		_, err := h.txSvc.CreatePendingItem(ctx, user.UUID, p.ChatID, p.MessageID, &item)
+		if err != nil {
+			log.Error().Err(err).Msg("creating pending transaction item failed")
+			return h.handleParseError(ctx, p, err)
+		}
 	}
 
-	log.Info().Str("pending_uuid", pendingUUID).Msg("sending confirmation prompt to user")
-	if err := h.sendConfirmationPrompt(ctx, p, result, p.MessageID); err != nil {
-		log.Error().Err(err).Msg("send confirmation prompt failed")
+	log.Info().Int("count", len(result.Transactions)).Msg("sending confirmation prompt batch to user")
+	if err := h.sendConfirmationPromptBatch(ctx, p, result.Transactions, p.MessageID); err != nil {
+		log.Error().Err(err).Msg("send confirmation prompt batch failed")
 	}
 
 	log.Info().Str("inbound_uuid", p.InboundID).Msg("completed message processing task successfully")
 	_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
 	return nil
+}
+
+func (h *ProcessMessageHandler) getItemMissingFields(item ninerouter.TransactionItem) []string {
+	var missing []string
+	if item.Amount == nil || *item.Amount <= 0 {
+		missing = append(missing, "*jumlah*")
+	}
+	if item.CategoryHint == nil || *item.CategoryHint == "" {
+		missing = append(missing, "*kategori*")
+	}
+	if item.AccountHint == nil || *item.AccountHint == "" {
+		missing = append(missing, "*akun*")
+	}
+	if item.Date == nil || *item.Date == "" {
+		missing = append(missing, "*tanggal*")
+	}
+	if item.Remark == nil || *item.Remark == "" {
+		missing = append(missing, "*catatan*")
+	}
+	return missing
 }
 
 func (h *ProcessMessageHandler) handleParseError(ctx context.Context, p ProcessMessagePayload, err error) error {
@@ -294,44 +334,44 @@ func (h *ProcessMessageHandler) handleParseError(ctx context.Context, p ProcessM
 	return nil
 }
 
-func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p ProcessMessagePayload, result *ninerouter.AIExtractionResult, replyToID string) error {
+func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p ProcessMessagePayload, item *ninerouter.TransactionItem, replyToID string) error {
 	amount := decimal.Zero
-	if result.Amount != nil {
-		amount = decimal.NewFromFloat(*result.Amount)
+	if item.Amount != nil {
+		amount = decimal.NewFromFloat(*item.Amount)
 	}
 
 	cat := ""
-	if result.CategoryHint != nil {
-		cat = *result.CategoryHint
+	if item.CategoryHint != nil {
+		cat = *item.CategoryHint
 	}
 
 	acc := ""
-	if result.AccountHint != nil {
-		acc = *result.AccountHint
+	if item.AccountHint != nil {
+		acc = *item.AccountHint
 	}
 
 	date := timeutil.TodayJakarta()
-	if result.Date != nil && *result.Date != "" {
-		date = *result.Date
+	if item.Date != nil && *item.Date != "" {
+		date = *item.Date
 	}
 
 	remark := ""
-	if result.Remark != nil {
-		remark = *result.Remark
+	if item.Remark != nil {
+		remark = *item.Remark
 	}
 
 	txTypeLabel := "Pengeluaran"
-	isExpense := result.Type == nil || *result.Type == "expense"
-	if result.Type != nil && *result.Type == "income" {
+	isExpense := item.Type == nil || *item.Type == "expense"
+	if item.Type != nil && *item.Type == "income" {
 		txTypeLabel = "Pemasukan"
 		isExpense = false
 	}
 
-	if isExpense && result.IsWasteful != nil && *result.IsWasteful {
+	if isExpense && item.IsWasteful != nil && *item.IsWasteful {
 		log := logger.WithCorrelationID(p.CorrelationID)
 		reason := ""
-		if result.WastefulReason != nil {
-			reason = *result.WastefulReason
+		if item.WastefulReason != nil {
+			reason = *item.WastefulReason
 		}
 		log.Info().Str("reason", reason).Msg("wasteful spending detected, sending warning bubble")
 		warningMsg := fmt.Sprintf("...a-ano... (ini agak canggung buat aku bilang tapi) ...kayaknya transaksi ini masuk kategori boros deh... 😶\n\n_%s_\n\n...(aku cuma mau ngingetin aja. Keuanganmu penting. ...maaf kalau lancang)", reason)
@@ -359,25 +399,64 @@ Catatan: %s
 	return h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, msg, replyToID)
 }
 
+func (h *ProcessMessageHandler) sendConfirmationPromptBatch(ctx context.Context, p ProcessMessagePayload, items []ninerouter.TransactionItem, replyToID string) error {
+	for _, item := range items {
+		isExpense := item.Type == nil || *item.Type == "expense"
+		if isExpense && item.IsWasteful != nil && *item.IsWasteful {
+			reason := ""
+			if item.WastefulReason != nil {
+				reason = *item.WastefulReason
+			}
+			warningMsg := fmt.Sprintf("...a-ano... (ini agak canggung buat aku bilang tapi) ...kayaknya transaksi ini masuk kategori boros deh... 😶\n\n_%s_\n\n...(aku cuma mau ngingetin aja. Keuanganmu penting. ...maaf kalau lancang)", reason)
+			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, warningMsg, replyToID)
+		}
+	}
 
-func (h *ProcessMessageHandler) getMissingFields(result *ninerouter.AIExtractionResult) []string {
-	var missing []string
-	if result.Amount == nil || *result.Amount <= 0 {
-		missing = append(missing, "*jumlah*")
+	if len(items) == 1 {
+		return h.sendConfirmationPrompt(ctx, p, &items[0], replyToID)
 	}
-	if result.CategoryHint == nil || *result.CategoryHint == "" {
-		missing = append(missing, "*kategori*")
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("...o-oh, aku nangkep %d transaksi... (semoga bener) 🎸\n\n", len(items)))
+	for i, item := range items {
+		amount := decimal.Zero
+		if item.Amount != nil {
+			amount = decimal.NewFromFloat(*item.Amount)
+		}
+		cat := ""
+		if item.CategoryHint != nil {
+			cat = *item.CategoryHint
+		}
+		acc := ""
+		if item.AccountHint != nil {
+			acc = *item.AccountHint
+		}
+		date := timeutil.TodayJakarta()
+		if item.Date != nil && *item.Date != "" {
+			date = *item.Date
+		}
+		remark := ""
+		if item.Remark != nil {
+			remark = *item.Remark
+		}
+		txTypeLabel := "Pengeluaran"
+		if item.Type != nil && *item.Type == "income" {
+			txTypeLabel = "Pemasukan"
+		}
+
+		sb.WriteString(fmt.Sprintf("%d. %s: %s | Catatan: %s | Kategori: %s | Akun: %s | Tanggal: %s\n",
+			i+1,
+			txTypeLabel,
+			money.FormatRupiah(amount),
+			remark,
+			cat,
+			acc,
+			date,
+		))
 	}
-	if result.AccountHint == nil || *result.AccountHint == "" {
-		missing = append(missing, "*akun*")
-	}
-	if result.Date == nil || *result.Date == "" {
-		missing = append(missing, "*tanggal*")
-	}
-	if result.Remark == nil || *result.Remark == "" {
-		missing = append(missing, "*catatan*")
-	}
-	return missing
+	sb.WriteString("\n...um, balas *ya* kalau mau disimpan... atau *batal* kalau nggak jadi. ...aku tunggu. 🙏")
+
+	return h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, sb.String(), replyToID)
 }
 
 func helpText() string {

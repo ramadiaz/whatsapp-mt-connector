@@ -60,3 +60,20 @@ func TestParseAndValidate_ZeroAmount(t *testing.T) {
 		t.Fatal("expected error for amount=0")
 	}
 }
+
+func TestParseAndValidate_MultiTransaction(t *testing.T) {
+	raw := `{"intent":"create_transaction","transactions":[{"type":"expense","amount":20000,"currency_code":"IDR","category_hint":"warkop","account_hint":"supa","date":"2026-07-23","remark":"warkop","confidence":0.95,"needs_confirmation":true,"missing_fields":[],"is_wasteful":false,"wasteful_reason":null},{"type":"expense","amount":2000,"currency_code":"IDR","category_hint":"parkir","account_hint":"cash","date":"2026-07-23","remark":"parkir","confidence":0.95,"needs_confirmation":true,"missing_fields":[],"is_wasteful":false,"wasteful_reason":null}]}`
+	result, err := ninerouter.ParseAndValidate(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Transactions) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(result.Transactions))
+	}
+	if *result.Transactions[0].Amount != 20000 {
+		t.Errorf("expected 20000, got %f", *result.Transactions[0].Amount)
+	}
+	if *result.Transactions[1].Amount != 2000 {
+		t.Errorf("expected 2000, got %f", *result.Transactions[1].Amount)
+	}
+}
