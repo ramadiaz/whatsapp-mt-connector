@@ -214,7 +214,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		}
 
 		log.Info().Str("pending_uuid", pendingUUID).Msg("sending confirmation prompt to user")
-		return h.sendConfirmationPrompt(ctx, p, result.Amount, result.Type, result.CategoryHint, result.AccountHint, result.Date, result.Remark, p.MessageID)
+		return h.sendConfirmationPrompt(ctx, p, result, p.MessageID)
 	}
 
 	text := p.Body
@@ -262,7 +262,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	log.Info().Str("pending_uuid", pendingUUID).Msg("sending confirmation prompt to user")
-	if err := h.sendConfirmationPrompt(ctx, p, result.Amount, result.Type, result.CategoryHint, result.AccountHint, result.Date, result.Remark, p.MessageID); err != nil {
+	if err := h.sendConfirmationPrompt(ctx, p, result, p.MessageID); err != nil {
 		log.Error().Err(err).Msg("send confirmation prompt failed")
 	}
 
@@ -294,50 +294,48 @@ func (h *ProcessMessageHandler) handleParseError(ctx context.Context, p ProcessM
 	return nil
 }
 
-func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p ProcessMessagePayload, amountPtr *float64, txType, catHint, accHint, datePtr, remarkPtr *string, replyToID string) error {
+func (h *ProcessMessageHandler) sendConfirmationPrompt(ctx context.Context, p ProcessMessagePayload, result *ninerouter.AIExtractionResult, replyToID string) error {
 	amount := decimal.Zero
-	if amountPtr != nil {
-		amount = decimal.NewFromFloat(*amountPtr)
+	if result.Amount != nil {
+		amount = decimal.NewFromFloat(*result.Amount)
 	}
 
 	cat := ""
-	if catHint != nil {
-		cat = *catHint
+	if result.CategoryHint != nil {
+		cat = *result.CategoryHint
 	}
 
 	acc := ""
-	if accHint != nil {
-		acc = *accHint
+	if result.AccountHint != nil {
+		acc = *result.AccountHint
 	}
 
 	date := timeutil.TodayJakarta()
-	if datePtr != nil && *datePtr != "" {
-		date = *datePtr
+	if result.Date != nil && *result.Date != "" {
+		date = *result.Date
 	}
 
 	remark := ""
-	if remarkPtr != nil {
-		remark = *remarkPtr
+	if result.Remark != nil {
+		remark = *result.Remark
 	}
 
 	txTypeLabel := "Pengeluaran"
-	isExpense := txType == nil || *txType == "expense"
-	if txType != nil && *txType == "income" {
+	isExpense := result.Type == nil || *result.Type == "expense"
+	if result.Type != nil && *result.Type == "income" {
 		txTypeLabel = "Pemasukan"
 		isExpense = false
 	}
 
-	if isExpense && amountPtr != nil {
+	if isExpense && result.IsWasteful != nil && *result.IsWasteful {
 		log := logger.WithCorrelationID(p.CorrelationID)
-		log.Info().Str("remark", remark).Str("category", cat).Float64("amount", *amountPtr).Msg("analyzing wasteful spending")
-		wasteful, reason, err := h.parserSvc.AnalyzeWasteful(ctx, remark, cat, *amountPtr)
-		if err != nil {
-			log.Warn().Err(err).Msg("wasteful analysis failed, skipping warning")
-		} else if wasteful {
-			log.Info().Str("reason", reason).Msg("wasteful spending detected, sending warning bubble")
-			warningMsg := fmt.Sprintf("...a-ano... (ini agak canggung buat aku bilang tapi) ...kayaknya transaksi ini masuk kategori boros deh... 😶\n\n_%s_\n\n...(aku cuma mau ngingetin aja. Keuanganmu penting. ...maaf kalau lancang)", reason)
-			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, warningMsg, replyToID)
+		reason := ""
+		if result.WastefulReason != nil {
+			reason = *result.WastefulReason
 		}
+		log.Info().Str("reason", reason).Msg("wasteful spending detected, sending warning bubble")
+		warningMsg := fmt.Sprintf("...a-ano... (ini agak canggung buat aku bilang tapi) ...kayaknya transaksi ini masuk kategori boros deh... 😶\n\n_%s_\n\n...(aku cuma mau ngingetin aja. Keuanganmu penting. ...maaf kalau lancang)", reason)
+		_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, warningMsg, replyToID)
 	}
 
 	msg := fmt.Sprintf(`...o-oh, aku nangkep transaksinya... (semoga bener) 🎸

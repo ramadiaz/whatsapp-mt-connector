@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseAndValidate_Valid(t *testing.T) {
-	raw := `{"intent":"create_transaction","type":"expense","amount":25000,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"Kopi susu","confidence":0.98,"needs_confirmation":true,"missing_fields":[]}`
+	raw := `{"intent":"create_transaction","type":"expense","amount":25000,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"Kopi susu","confidence":0.98,"needs_confirmation":true,"missing_fields":[],"is_wasteful":true,"wasteful_reason":"Membeli kopi kekinian setiap hari"}`
 	result, err := ninerouter.ParseAndValidate(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -18,10 +18,16 @@ func TestParseAndValidate_Valid(t *testing.T) {
 	if *result.Amount != 25000 {
 		t.Errorf("expected 25000, got %f", *result.Amount)
 	}
+	if result.IsWasteful == nil || !*result.IsWasteful {
+		t.Errorf("expected is_wasteful true")
+	}
+	if result.WastefulReason == nil || *result.WastefulReason != "Membeli kopi kekinian setiap hari" {
+		t.Errorf("unexpected wasteful_reason: %v", result.WastefulReason)
+	}
 }
 
 func TestParseAndValidate_MarkdownWrapped(t *testing.T) {
-	raw := "```json\n{\"intent\":\"create_transaction\",\"type\":\"expense\",\"amount\":25000,\"currency_code\":\"IDR\",\"category_hint\":\"food\",\"account_hint\":null,\"date\":\"2026-07-03\",\"remark\":\"Kopi\",\"confidence\":0.9,\"needs_confirmation\":true,\"missing_fields\":[]}\n```"
+	raw := "```json\n{\"intent\":\"create_transaction\",\"type\":\"expense\",\"amount\":25000,\"currency_code\":\"IDR\",\"category_hint\":\"food\",\"account_hint\":null,\"date\":\"2026-07-03\",\"remark\":\"Kopi\",\"confidence\":0.9,\"needs_confirmation\":true,\"missing_fields\":[],\"is_wasteful\":false,\"wasteful_reason\":null}\n```"
 	result, err := ninerouter.ParseAndValidate(raw)
 	if err != nil {
 		t.Fatalf("unexpected error for markdown-wrapped: %v", err)
@@ -32,7 +38,7 @@ func TestParseAndValidate_MarkdownWrapped(t *testing.T) {
 }
 
 func TestParseAndValidate_UnknownField(t *testing.T) {
-	raw := `{"intent":"create_transaction","type":"expense","amount":25000,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"x","confidence":0.9,"needs_confirmation":true,"missing_fields":[],"extra_unknown_field":"bad"}`
+	raw := `{"intent":"create_transaction","type":"expense","amount":25000,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"x","confidence":0.9,"needs_confirmation":true,"missing_fields":[],"is_wasteful":false,"wasteful_reason":null,"extra_unknown_field":"bad"}`
 	_, err := ninerouter.ParseAndValidate(raw)
 	if err == nil {
 		t.Fatal("expected error for unknown field")
@@ -40,7 +46,7 @@ func TestParseAndValidate_UnknownField(t *testing.T) {
 }
 
 func TestParseAndValidate_BadEnum(t *testing.T) {
-	raw := `{"intent":"invalid_intent","type":"expense","amount":25000,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"x","confidence":0.9,"needs_confirmation":true,"missing_fields":[]}`
+	raw := `{"intent":"invalid_intent","type":"expense","amount":25000,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"x","confidence":0.9,"needs_confirmation":true,"missing_fields":[],"is_wasteful":false,"wasteful_reason":null}`
 	_, err := ninerouter.ParseAndValidate(raw)
 	if err == nil {
 		t.Fatal("expected error for invalid intent")
@@ -48,7 +54,7 @@ func TestParseAndValidate_BadEnum(t *testing.T) {
 }
 
 func TestParseAndValidate_ZeroAmount(t *testing.T) {
-	raw := `{"intent":"create_transaction","type":"expense","amount":0,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"x","confidence":0.9,"needs_confirmation":true,"missing_fields":[]}`
+	raw := `{"intent":"create_transaction","type":"expense","amount":0,"currency_code":"IDR","category_hint":"food","account_hint":null,"date":"2026-07-03","remark":"x","confidence":0.9,"needs_confirmation":true,"missing_fields":[],"is_wasteful":false,"wasteful_reason":null}`
 	_, err := ninerouter.ParseAndValidate(raw)
 	if err == nil {
 		t.Fatal("expected error for amount=0")

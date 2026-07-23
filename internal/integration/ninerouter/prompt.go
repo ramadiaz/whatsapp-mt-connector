@@ -16,6 +16,8 @@ Use null for uncertain data.
 Use Indonesia timezone context.
 Amount must be a positive numeric value without currency separators.
 
+For expense transactions, evaluate if spending is wasteful/unnecessary based on Indonesian lifestyle context (luxury items, frequent small indulgences, overpriced alternatives, non-essential splurges). Set is_wasteful to true and provide wasteful_reason (short Indonesian sentence explaining why). If not wasteful or not expense, set is_wasteful to false and wasteful_reason to null.
+
 Allowed intent values: create_transaction, clarification, help, unsupported
 Allowed type values: income, expense, null`
 
@@ -50,7 +52,9 @@ Respond with JSON only matching this exact schema:
   "remark": "<string or null>",
   "confidence": <0.0-1.0>,
   "needs_confirmation": true,
-  "missing_fields": []
+  "missing_fields": [],
+  "is_wasteful": <true|false|null>,
+  "wasteful_reason": "<string or null>"
 }`,
 		systemPrompt,
 		today,
@@ -96,7 +100,9 @@ Respond with JSON only matching this exact schema:
   "remark": "<string or null>",
   "confidence": <0.0-1.0>,
   "needs_confirmation": true,
-  "missing_fields": []
+  "missing_fields": [],
+  "is_wasteful": <true|false|null>,
+  "wasteful_reason": "<string or null>"
 }`,
 		systemPrompt,
 		today,
@@ -106,22 +112,4 @@ Respond with JSON only matching this exact schema:
 		quotedPart,
 		captionPart,
 	)
-}
-
-func BuildWastefulPrompt(remark, category string, amount float64) string {
-	return fmt.Sprintf(`You are a personal finance advisor analyzing Indonesian spending habits.
-Determine if this expense is wasteful or unnecessary based on Indonesian lifestyle context.
-Consider: luxury items, frequent small indulgences, overpriced alternatives, non-essential splurges.
-Do not explain your reasoning. Return valid JSON only.
-
-Expense details:
-- Remark: %s
-- Category: %s
-- Amount: Rp %.0f
-
-Respond with JSON only matching this exact schema:
-{
-  "wasteful": <true|false>,
-  "reason": "<short Indonesian sentence explaining why, or empty string if not wasteful>"
-}`, remark, category, amount)
 }

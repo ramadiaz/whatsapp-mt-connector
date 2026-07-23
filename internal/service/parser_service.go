@@ -242,21 +242,3 @@ func (s *ParserService) callAI(ctx context.Context, model, systemPrompt string, 
 	return nil, lastErr
 }
 
-func (s *ParserService) AnalyzeWasteful(ctx context.Context, remark, category string, amount float64) (bool, string, error) {
-	prompt := ninerouter.BuildWastefulPrompt(remark, category, amount)
-
-	raw, err := s.nineRouter.CompleteSimple(ctx, prompt, 0)
-	if err != nil {
-		logger.Log.Warn().Err(err).Msg("wasteful analysis AI call failed")
-		return false, "", err
-	}
-
-	result, err := ninerouter.ParseWasteful(raw)
-	if err != nil {
-		logger.Log.Warn().Err(err).Str("raw", raw).Msg("parse wasteful AI response failed")
-		return false, "", err
-	}
-
-	return result.Wasteful, result.Reason, nil
-}
-

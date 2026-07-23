@@ -9,17 +9,19 @@ import (
 )
 
 type AIExtractionResult struct {
-	Intent           string   `json:"intent"`
-	Type             *string  `json:"type"`
-	Amount           *float64 `json:"amount"`
-	CurrencyCode     string   `json:"currency_code"`
-	CategoryHint     *string  `json:"category_hint"`
-	AccountHint      *string  `json:"account_hint"`
-	Date             *string  `json:"date"`
-	Remark           *string  `json:"remark"`
-	Confidence       float64  `json:"confidence"`
-	NeedsConfirmation bool    `json:"needs_confirmation"`
-	MissingFields    []string `json:"missing_fields"`
+	Intent            string   `json:"intent"`
+	Type              *string  `json:"type"`
+	Amount            *float64 `json:"amount"`
+	CurrencyCode      string   `json:"currency_code"`
+	CategoryHint      *string  `json:"category_hint"`
+	AccountHint       *string  `json:"account_hint"`
+	Date              *string  `json:"date"`
+	Remark            *string  `json:"remark"`
+	Confidence        float64  `json:"confidence"`
+	NeedsConfirmation bool     `json:"needs_confirmation"`
+	MissingFields     []string `json:"missing_fields"`
+	IsWasteful        *bool    `json:"is_wasteful"`
+	WastefulReason    *string  `json:"wasteful_reason"`
 }
 
 var allowedIntents = map[string]bool{
@@ -71,32 +73,6 @@ func ParseAndValidate(raw string) (*AIExtractionResult, error) {
 		}
 	}
 
-	return &result, nil
-}
-
-type WastefulAnalysisResult struct {
-	Wasteful bool   `json:"wasteful"`
-	Reason   string `json:"reason"`
-}
-
-func ParseWasteful(raw string) (*WastefulAnalysisResult, error) {
-	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(raw, "```") {
-		lines := strings.Split(raw, "\n")
-		var inner []string
-		for _, line := range lines {
-			if strings.HasPrefix(line, "```") {
-				continue
-			}
-			inner = append(inner, line)
-		}
-		raw = strings.Join(inner, "\n")
-	}
-
-	var result WastefulAnalysisResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return nil, fmt.Errorf("parse wasteful: %w", err)
-	}
 	return &result, nil
 }
 
