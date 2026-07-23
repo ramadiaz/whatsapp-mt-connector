@@ -119,6 +119,7 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 		"device_id":      s.deviceID,
 		"correlation_id": correlationID,
 		"quoted_body":    event.Payload.QuotedBody,
+		"replied_to_id":  event.Payload.RepliedToID,
 	})
 
 	task := asynq.NewTask("process:message", payload, asynq.Queue("default"))

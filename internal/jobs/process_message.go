@@ -36,6 +36,7 @@ type ProcessMessagePayload struct {
 	DeviceID      string `json:"device_id"`
 	CorrelationID string `json:"correlation_id"`
 	QuotedBody    string `json:"quoted_body"`
+	RepliedToID   string `json:"replied_to_id"`
 }
 
 type ProcessMessageHandler struct {
@@ -182,16 +183,52 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return nil
 	}
 
+	activePendings, _ := h.txSvc.GetActivePendings(ctx, p.ChatID)
+
+	var isQuotedImage bool
+	var quotedImageMessageID string
+	var quotedImageCaption string
+
+	if p.RepliedToID != "" {
+		if rawPayload, err := h.inboundRepo.GetRawPayloadByMessageID(ctx, p.RepliedToID); err == nil && rawPayload != "" {
+			var quotedPayload struct {
+				MediaType string `json:"media_type"`
+				Type      string `json:"type"`
+				Image     any    `json:"image"`
+				Caption   string `json:"caption"`
+				Body      string `json:"body"`
+			}
+			if err := json.Unmarshal([]byte(rawPayload), &quotedPayload); err == nil {
+				if quotedPayload.MediaType == "image" || quotedPayload.Image != nil || quotedPayload.Type == "image" {
+					isQuotedImage = true
+					quotedImageMessageID = p.RepliedToID
+					quotedImageCaption = p.Body
+				} else if p.QuotedBody == "" {
+					if quotedPayload.Body != "" {
+						p.QuotedBody = quotedPayload.Body
+					} else if quotedPayload.Caption != "" {
+						p.QuotedBody = quotedPayload.Caption
+					}
+				}
+			}
+		}
+	}
+
 	var parseErr error
 
-	if p.Type == "image" {
+	if p.Type == "image" || isQuotedImage {
 		log.Info().Str("message_id", p.MessageID).Msg("image message detected, parsing image media payload")
 		phone := p.SenderNumber + "@s.whatsapp.net"
+		targetMessageID := p.MessageID
 		caption := p.Caption
 		if caption == "" {
 			caption = p.Body
 		}
-		result, err := h.parserSvc.ParseImage(ctx, user.UUID, p.MessageID, phone, caption, p.QuotedBody, userMTClient)
+		if isQuotedImage {
+			targetMessageID = quotedImageMessageID
+			caption = quotedImageCaption
+		}
+		result, err := h.parserSvc.ParseImage(ctx, user.UUID, targetMessageID, phone, caption, p.QuotedBody, activePendings, userMTClient)
 		if err != nil {
 			log.Error().Err(err).Msg("parsing image media payload failed")
 			return h.handleParseError(ctx, p, err)
@@ -202,7 +239,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 	text := p.Body
 	log.Info().Str("text", text).Msg("parsing text message payload")
-	result, err := h.parserSvc.ParseText(ctx, user.UUID, text, p.QuotedBody, userMTClient)
+	result, err := h.parserSvc.ParseText(ctx, user.UUID, text, p.QuotedBody, activePendings, userMTClient)
 	if err != nil {
 		log.Error().Err(err).Msg("parsing text message payload failed")
 		parseErr = err

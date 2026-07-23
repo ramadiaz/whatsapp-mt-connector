@@ -176,3 +176,7 @@ func (s *TransactionService) Commit(ctx context.Context, pendingUUID string, pen
 
 	return created, nil
 }
+
+func (s *TransactionService) GetActivePendings(ctx context.Context, chatID string) ([]*transaction.PendingTransactionRow, error) {
+	return s.pendingRepo.FindAllActiveByChat(ctx, chatID)
+}

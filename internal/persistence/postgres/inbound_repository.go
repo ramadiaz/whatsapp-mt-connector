@@ -60,5 +60,14 @@ func (r *InboundRepository) MarkFailed(ctx context.Context, id string, reason st
 	}).Error
 }
 
+func (r *InboundRepository) GetRawPayloadByMessageID(ctx context.Context, messageID string) (string, error) {
+	var msg InboundMessage
+	err := r.db.WithContext(ctx).Where("gowa_message_id = ?", messageID).First(&msg).Error
+	if err != nil {
+		return "", err
+	}
+	return msg.RawPayloadJSON, nil
+}
+
 var _ transaction.InboundRepository = (*InboundRepository)(nil)
 

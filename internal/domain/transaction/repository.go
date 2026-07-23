@@ -7,6 +7,7 @@ type InboundRepository interface {
 	MarkProcessing(ctx context.Context, id string) error
 	MarkDone(ctx context.Context, id string) error
 	MarkFailed(ctx context.Context, id string, reason string) error
+	GetRawPayloadByMessageID(ctx context.Context, messageID string) (string, error)
 }
 
 type PendingTransactionRepository interface {
