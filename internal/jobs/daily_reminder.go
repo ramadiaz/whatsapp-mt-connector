@@ -63,7 +63,7 @@ func (h *DailyReminderHandler) ProcessTask(ctx context.Context, _ *asynq.Task) e
 		}
 
 		if len(txs) == 0 {
-			msg := "Halo! Kamu belum mencatat transaksi hari ini. Jangan lupa catat pengeluaran atau pemasukanmu ya! 📝"
+			msg := "...a-ano... (aku gemetaran nulis ini) ...hari ini belum ada catatan transaksi... 😶 K-kalau sempat... jangan lupa catat pengeluaranmu ya... m-maaf ya ngingetin. 🙏"
 			if err := h.gowaClient.SendText(ctx, h.deviceID, user.PhoneNumber, msg, ""); err != nil {
 				log.Error().Err(err).Str("user_uuid", user.UUID).Msg("daily reminder: send message failed")
 			} else {
