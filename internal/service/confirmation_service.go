@@ -78,9 +78,20 @@ func (s *ConfirmationService) confirm(ctx context.Context, chatID, replyToID, co
 		return err
 	}
 
+	latestSourceMsgID := pendings[len(pendings)-1].SourceMessageID
+	var toConfirm []*transaction.PendingTransactionRow
+	for _, pending := range pendings {
+		if pending.SourceMessageID == latestSourceMsgID {
+			toConfirm = append(toConfirm, pending)
+		} else {
+			log.Info().Str("pending_uuid", pending.UUID).Msg("cancelling older unconfirmed pending transaction")
+			_ = s.pendingRepo.MarkCancelled(ctx, pending.UUID)
+		}
+	}
+
 	var committed []*transaction.CreatedTransaction
 	var committedPendings []*transaction.PendingTransactionRow
-	for _, pending := range pendings {
+	for _, pending := range toConfirm {
 		log.Info().Str("pending_uuid", pending.UUID).Msg("found active pending transaction, committing to money tracker")
 		created, err := s.txService.Commit(ctx, pending.UUID, pending, mtClient)
 		if err != nil {

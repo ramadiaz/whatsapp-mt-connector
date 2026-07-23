@@ -15,7 +15,7 @@ Do not invent missing values.
 Use null for uncertain data.
 Use Indonesia timezone context.
 Amount must be a positive numeric value without currency separators.
-Extract ALL transactions, expenses, or invoices present in the user text or image into the "transactions" JSON array.
+Extract ALL transactions, expenses, or invoices present in the user text (including any quoted message provided), caption, or image into the "transactions" JSON array. If the user message provides corrections or additional details (like category or account) for the quoted message, merge them accordingly.
 
 For expense transactions, evaluate if spending is wasteful/unnecessary based on Indonesian lifestyle context (luxury items, frequent small indulgences, overpriced alternatives, non-essential splurges). Set is_wasteful to true and provide wasteful_reason (short Indonesian sentence explaining why). If not wasteful or not expense, set is_wasteful to false and wasteful_reason to null.
 
