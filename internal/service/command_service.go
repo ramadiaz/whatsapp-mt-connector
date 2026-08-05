@@ -7,6 +7,8 @@ import (
 
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/blacklist"
 	gowaintegration "github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/persistence/postgres"
+	"gorm.io/gorm"
 )
 
 type ParsedCommand struct {
@@ -18,6 +20,8 @@ type ParsedCommand struct {
 type CommandService struct {
 	adminNumbers  []string
 	blacklistRepo blacklist.Repository
+	userRepo      *postgres.UserRepository
+	db            *gorm.DB
 	gowaClient    gowaintegration.WhatsAppGateway
 	deviceID      string
 }
@@ -25,12 +29,16 @@ type CommandService struct {
 func NewCommandService(
 	adminNumbers []string,
 	blacklistRepo blacklist.Repository,
+	userRepo *postgres.UserRepository,
+	db *gorm.DB,
 	gowaClient gowaintegration.WhatsAppGateway,
 	deviceID string,
 ) *CommandService {
 	return &CommandService{
 		adminNumbers:  adminNumbers,
 		blacklistRepo: blacklistRepo,
+		userRepo:      userRepo,
+		db:            db,
 		gowaClient:    gowaClient,
 		deviceID:      deviceID,
 	}
@@ -117,6 +125,10 @@ func (s *CommandService) HandleCommand(ctx context.Context, senderNumber, chatID
 	switch cmd.Name {
 	case "blacklist":
 		return s.handleBlacklistCommand(ctx, senderNumber, chatID, cmd, messageID)
+	case "users", "user":
+		return s.handleUsersCommand(ctx, chatID, cmd, messageID)
+	case "stats", "status":
+		return s.handleStatsCommand(ctx, chatID, cmd, messageID)
 	case "help":
 		return s.handleHelpCommand(ctx, chatID, cmd, messageID)
 	default:
@@ -126,7 +138,53 @@ func (s *CommandService) HandleCommand(ctx context.Context, senderNumber, chatID
 }
 
 func (s *CommandService) handleHelpCommand(ctx context.Context, chatID string, cmd *ParsedCommand, messageID string) error {
-	msg := "Daftar Admin Command:\n- `/blacklist` : Kelola daftar nomor yang diblokir (`add`, `remove`, `list`)\n- `/help` : Tampilkan pesan bantuan daftar command\n\nTips: Tambahkan `--help` atau `-h` di setiap command untuk opsi lengkap."
+	msg := "Daftar Admin Command:\n- `/blacklist` : Kelola nomor diblokir (`add`, `remove`, `list`)\n- `/users` : Lihat daftar pengguna terdaftar\n- `/stats` : Lihat statistik & status sistem\n- `/help` : Tampilkan bantuan\n\nTips: Tambahkan `--help` atau `-h` pada command untuk melihat opsi."
+	return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+}
+
+func (s *CommandService) handleUsersCommand(ctx context.Context, chatID string, cmd *ParsedCommand, messageID string) error {
+	if cmd.HasHelpFlag() {
+		msg := "Penggunaan command users:\n- `/users` : Tampilkan daftar semua pengguna terdaftar\n\nFlag:\n  --help, -h : Tampilkan pesan bantuan"
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+	}
+
+	users, err := s.userRepo.ListAll(ctx)
+	if err != nil {
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal mengambil daftar pengguna.", messageID)
+	}
+	if len(users) == 0 {
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Belum ada pengguna terdaftar.", messageID)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Daftar Pengguna (%d):\n", len(users)))
+	for idx, u := range users {
+		keyStatus := "terdaftar"
+		if u.MTAPIKey == "" {
+			keyStatus = "belum set API key"
+		}
+		sb.WriteString(fmt.Sprintf("%d. %s [%s] (%s)\n", idx+1, u.PhoneNumber, u.Role, keyStatus))
+	}
+	return s.gowaClient.SendText(ctx, s.deviceID, chatID, sb.String(), messageID)
+}
+
+func (s *CommandService) handleStatsCommand(ctx context.Context, chatID string, cmd *ParsedCommand, messageID string) error {
+	if cmd.HasHelpFlag() {
+		msg := "Penggunaan command stats:\n- `/stats` : Tampilkan ringkasan statistik sistem\n\nFlag:\n  --help, -h : Tampilkan pesan bantuan"
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+	}
+
+	var userCount int64
+	var blacklistedCount int64
+	var inboundCount int64
+	var pendingTxCount int64
+
+	_ = s.db.WithContext(ctx).Model(&postgres.User{}).Count(&userCount).Error
+	_ = s.db.WithContext(ctx).Model(&postgres.Blacklist{}).Count(&blacklistedCount).Error
+	_ = s.db.WithContext(ctx).Model(&postgres.InboundMessage{}).Count(&inboundCount).Error
+	_ = s.db.WithContext(ctx).Model(&postgres.PendingTransaction{}).Where("status = ?", "pending").Count(&pendingTxCount).Error
+
+	msg := fmt.Sprintf("Statistik Sistem:\n- Total User: %d\n- Total Blacklist: %d\n- Inbound Messages: %d\n- Pending Transactions: %d", userCount, blacklistedCount, inboundCount, pendingTxCount)
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
 }
 

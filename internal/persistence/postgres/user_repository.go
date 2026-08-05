@@ -65,3 +65,19 @@ func (r *UserRepository) FindUsersWithAPIKey(ctx context.Context) ([]User, error
 	return users, nil
 }
 
+func (r *UserRepository) ListAll(ctx context.Context) ([]User, error) {
+	var users []User
+	err := r.db.WithContext(ctx).Order("id asc").Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("list all users: %w", err)
+	}
+	return users, nil
+}
+
+func (r *UserRepository) Count(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&User{}).Count(&count).Error
+	return count, err
+}
+
+

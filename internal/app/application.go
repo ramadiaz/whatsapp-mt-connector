@@ -102,7 +102,7 @@ func Run() error {
 	parserSvc := service.NewParserService(gowaClient, nineClient, catCacheRepo, accCacheRepo, mtClient, cfg.GOWADeviceID, cfg.MaxMediaBytes, cfg.MaxAIRetries)
 	txSvc := service.NewTransactionService(mtClient, catCacheRepo, accCacheRepo, pendingRepo, submissionRepo)
 	confirmationSvc := service.NewConfirmationService(pendingRepo, txSvc, gowaClient, cfg.GOWADeviceID)
-	commandSvc := service.NewCommandService(cfg.AllowedNumbers, blacklistRepo, gowaClient, cfg.GOWADeviceID)
+	commandSvc := service.NewCommandService(cfg.AllowedNumbers, blacklistRepo, userRepo, db, gowaClient, cfg.GOWADeviceID)
 
 	processHandler := jobs.NewProcessMessageHandler(inboundRepo, blacklistRepo, userRepo, parserSvc, txSvc, confirmationSvc, commandSvc, gowaClient, cfg.GOWADeviceID, cfg.AllowedNumbers, cfg.MTAPIKey, cfg.MTHost)
 	refreshHandler := jobs.NewRefreshMTCacheHandler(db, userRepo, catCacheRepo, accCacheRepo, cfg.MTHost, cfg.MTAPIKey)
