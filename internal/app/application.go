@@ -65,6 +65,7 @@ func Run() error {
 		&postgres.TransactionSubmission{},
 		&postgres.CategoryCache{},
 		&postgres.AccountCache{},
+		&postgres.Blacklist{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
@@ -91,6 +92,7 @@ func Run() error {
 	submissionRepo := postgres.NewSubmissionRepository(db)
 	catCacheRepo := postgres.NewCategoryCacheRepository(db)
 	accCacheRepo := postgres.NewAccountCacheRepository(db)
+	blacklistRepo := postgres.NewBlacklistRepository(db)
 
 	log.Info().Str("host", cfg.RedisHost).Str("port", cfg.RedisPort).Msg("connecting to redis asynq client")
 	asynqClient := redisqueue.NewAsynqClient(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
@@ -100,8 +102,9 @@ func Run() error {
 	parserSvc := service.NewParserService(gowaClient, nineClient, catCacheRepo, accCacheRepo, mtClient, cfg.GOWADeviceID, cfg.MaxMediaBytes, cfg.MaxAIRetries)
 	txSvc := service.NewTransactionService(mtClient, catCacheRepo, accCacheRepo, pendingRepo, submissionRepo)
 	confirmationSvc := service.NewConfirmationService(pendingRepo, txSvc, gowaClient, cfg.GOWADeviceID)
+	commandSvc := service.NewCommandService(cfg.AllowedNumbers, blacklistRepo, gowaClient, cfg.GOWADeviceID)
 
-	processHandler := jobs.NewProcessMessageHandler(inboundRepo, userRepo, parserSvc, txSvc, confirmationSvc, gowaClient, cfg.GOWADeviceID, cfg.AllowedNumbers, cfg.MTAPIKey, cfg.MTHost)
+	processHandler := jobs.NewProcessMessageHandler(inboundRepo, blacklistRepo, userRepo, parserSvc, txSvc, confirmationSvc, commandSvc, gowaClient, cfg.GOWADeviceID, cfg.AllowedNumbers, cfg.MTAPIKey, cfg.MTHost)
 	refreshHandler := jobs.NewRefreshMTCacheHandler(db, userRepo, catCacheRepo, accCacheRepo, cfg.MTHost, cfg.MTAPIKey)
 	reminderHandler := jobs.NewDailyReminderHandler(userRepo, gowaClient, cfg.GOWADeviceID, cfg.MTHost)
 

@@ -143,3 +143,26 @@ type AccountCache struct {
 func (AccountCache) TableName() string {
 	return "money_tracker_accounts_cache"
 }
+
+type Blacklist struct {
+	ID          int64          `gorm:"primaryKey;autoIncrement;index;column:id"`
+	UUID        string         `gorm:"uniqueIndex;index;column:uuid;not null"`
+	PhoneNumber string         `gorm:"column:phone_number;uniqueIndex;not null"`
+	Reason      string         `gorm:"column:reason"`
+	CreatedBy   string         `gorm:"column:created_by"`
+	CreatedAt   time.Time      `gorm:"column:created_at;default:now()"`
+	UpdatedAt   time.Time      `gorm:"column:updated_at;default:now()"`
+	DeletedAt   gorm.DeletedAt `gorm:"column:deleted_at;index"`
+}
+
+func (b *Blacklist) BeforeCreate(tx *gorm.DB) error {
+	if b.UUID == "" {
+		b.UUID = uuid.NewString()
+	}
+	return nil
+}
+
+func (Blacklist) TableName() string {
+	return "blacklists"
+}
+

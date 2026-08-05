@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/blacklist"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/transaction"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/moneytracker"
@@ -41,10 +42,12 @@ type ProcessMessagePayload struct {
 
 type ProcessMessageHandler struct {
 	inboundRepo     transaction.InboundRepository
+	blacklistRepo   blacklist.Repository
 	userRepo        *postgres.UserRepository
 	parserSvc       *service.ParserService
 	txSvc           *service.TransactionService
 	confirmationSvc *service.ConfirmationService
+	commandSvc      *service.CommandService
 	gowaClient      gowa.WhatsAppGateway
 	deviceID        string
 	adminNumbers    []string
@@ -54,10 +57,12 @@ type ProcessMessageHandler struct {
 
 func NewProcessMessageHandler(
 	inboundRepo transaction.InboundRepository,
+	blacklistRepo blacklist.Repository,
 	userRepo *postgres.UserRepository,
 	parserSvc *service.ParserService,
 	txSvc *service.TransactionService,
 	confirmationSvc *service.ConfirmationService,
+	commandSvc *service.CommandService,
 	gowaClient gowa.WhatsAppGateway,
 	deviceID string,
 	adminNumbers []string,
@@ -66,10 +71,12 @@ func NewProcessMessageHandler(
 ) *ProcessMessageHandler {
 	return &ProcessMessageHandler{
 		inboundRepo:     inboundRepo,
+		blacklistRepo:   blacklistRepo,
 		userRepo:        userRepo,
 		parserSvc:       parserSvc,
 		txSvc:           txSvc,
 		confirmationSvc: confirmationSvc,
+		commandSvc:      commandSvc,
 		gowaClient:      gowaClient,
 		deviceID:        deviceID,
 		adminNumbers:    adminNumbers,
@@ -88,8 +95,29 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	log.Info().Str("inbound_uuid", p.InboundID).Str("type", p.Type).Msg("processing inbound message task")
 
 	_ = h.inboundRepo.MarkProcessing(ctx, p.InboundID)
+
+	if isBlacklisted, err := h.blacklistRepo.IsBlacklisted(ctx, p.SenderNumber); err == nil && isBlacklisted {
+		log.Warn().Str("sender", p.SenderNumber).Msg("message from blacklisted sender ignored")
+		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+		return nil
+	}
+
+	bodyText := strings.TrimSpace(p.Body)
+	if strings.HasPrefix(bodyText, "/") {
+		log.Info().Str("sender", p.SenderNumber).Str("command", bodyText).Msg("handling admin command")
+		err := h.commandSvc.HandleCommand(ctx, p.SenderNumber, p.ChatID, bodyText, p.MessageID)
+		if err != nil {
+			log.Error().Err(err).Msg("command execution failed")
+			_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
+			return err
+		}
+		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+		return nil
+	}
+
 	_ = h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "start")
 	defer h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "stop") //nolint:errcheck
+
 
 	role := "customer"
 	apiKey := ""
@@ -108,7 +136,7 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return err
 	}
 
-	bodyText := strings.TrimSpace(p.Body)
+	bodyText = strings.TrimSpace(p.Body)
 	if strings.HasPrefix(strings.ToLower(bodyText), "key ") {
 		newKey := strings.TrimSpace(bodyText[4:])
 		if newKey == "" {

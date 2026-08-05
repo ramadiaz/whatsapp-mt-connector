@@ -16,6 +16,8 @@ This service connects GOWA (WhatsApp Gateway) with Money Tracker. It receives si
 - **Modification Rule**: Check project-wide usage before modifying functions. If reused, write a new one.
 - **No Nesting**: Avoid layered nested functions unless reusable.
 - **Config**: Always check existing configurations before changing defaults.
+- **Command Help Flag**: Every command must support `--help` (and `-h`) flag to display command usage.
+
 
 ## Architectural Structure
 - `cmd/whatsapp-mt-connector/main.go`: App entry.
