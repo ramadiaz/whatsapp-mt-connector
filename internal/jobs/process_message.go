@@ -45,6 +45,7 @@ type ProcessMessageHandler struct {
 	blacklistRepo   blacklist.Repository
 	userRepo        *postgres.UserRepository
 	parserSvc       *service.ParserService
+	calorieSvc      *service.CalorieService
 	txSvc           *service.TransactionService
 	confirmationSvc *service.ConfirmationService
 	commandSvc      *service.CommandService
@@ -60,6 +61,7 @@ func NewProcessMessageHandler(
 	blacklistRepo blacklist.Repository,
 	userRepo *postgres.UserRepository,
 	parserSvc *service.ParserService,
+	calorieSvc *service.CalorieService,
 	txSvc *service.TransactionService,
 	confirmationSvc *service.ConfirmationService,
 	commandSvc *service.CommandService,
@@ -74,6 +76,7 @@ func NewProcessMessageHandler(
 		blacklistRepo:   blacklistRepo,
 		userRepo:        userRepo,
 		parserSvc:       parserSvc,
+		calorieSvc:      calorieSvc,
 		txSvc:           txSvc,
 		confirmationSvc: confirmationSvc,
 		commandSvc:      commandSvc,
@@ -103,6 +106,71 @@ func (h *ProcessMessageHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	bodyText := strings.TrimSpace(p.Body)
+	captionText := strings.TrimSpace(p.Caption)
+
+	var isCalorieCmd bool
+	var calQuery string
+
+	if strings.EqualFold(bodyText, "/cal") || strings.HasPrefix(strings.ToLower(bodyText), "/cal ") || strings.HasPrefix(strings.ToLower(bodyText), "/cal\n") {
+		isCalorieCmd = true
+		calQuery = strings.TrimSpace(bodyText[4:])
+	} else if p.Type == "image" && (strings.EqualFold(captionText, "/cal") || strings.HasPrefix(strings.ToLower(captionText), "/cal ") || strings.HasPrefix(strings.ToLower(captionText), "/cal\n")) {
+		isCalorieCmd = true
+		calQuery = strings.TrimSpace(captionText[4:])
+	}
+
+	if isCalorieCmd {
+		_ = h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "start")
+		defer h.gowaClient.SendChatPresence(ctx, h.deviceID, p.ChatID, "stop") //nolint:errcheck
+
+		if calQuery == "--help" || calQuery == "-h" || calQuery == "help" {
+			helpMsg := "ℹ️ *Panduan Penggunaan `/cal`*\n\n1. *Hitung Kalori via Teks:*\nKetik `/cal <nama makanan>`\nContoh: `/cal indomie goreng + telur ceplok`\n\n2. *Hitung Kalori via Foto / Tabel Gizi:*\nKirim foto makanan atau informasi nilai gizi dengan caption `/cal`\n\n3. *Reply Foto:*\nBalas (reply) foto makanan dengan pesan `/cal`"
+			_ = h.gowaClient.SendText(ctx, h.deviceID, p.ChatID, helpMsg, p.MessageID)
+			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+			return nil
+		}
+
+		phone := p.SenderNumber + "@s.whatsapp.net"
+		if p.Type == "image" {
+			err := h.calorieSvc.HandleCalorieQuery(ctx, p.ChatID, p.MessageID, phone, calQuery, true, p.MessageID)
+			if err != nil {
+				_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
+				return err
+			}
+			_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+			return nil
+		}
+
+		if p.RepliedToID != "" {
+			if rawPayload, err := h.inboundRepo.GetRawPayloadByMessageID(ctx, p.RepliedToID); err == nil && rawPayload != "" {
+				var quotedPayload struct {
+					MediaType string `json:"media_type"`
+					Type      string `json:"type"`
+					Image     any    `json:"image"`
+				}
+				if err := json.Unmarshal([]byte(rawPayload), &quotedPayload); err == nil {
+					if quotedPayload.MediaType == "image" || quotedPayload.Image != nil || quotedPayload.Type == "image" {
+						err := h.calorieSvc.HandleCalorieQuery(ctx, p.ChatID, p.MessageID, phone, calQuery, true, p.RepliedToID)
+						if err != nil {
+							_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
+							return err
+						}
+						_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+						return nil
+					}
+				}
+			}
+		}
+
+		err := h.calorieSvc.HandleCalorieQuery(ctx, p.ChatID, p.MessageID, phone, calQuery, false, "")
+		if err != nil {
+			_ = h.inboundRepo.MarkFailed(ctx, p.InboundID, err.Error())
+			return err
+		}
+		_ = h.inboundRepo.MarkDone(ctx, p.InboundID)
+		return nil
+	}
+
 	if strings.HasPrefix(bodyText, "/") {
 		log.Info().Str("sender", p.SenderNumber).Str("command", bodyText).Msg("handling admin command")
 		err := h.commandSvc.HandleCommand(ctx, p.SenderNumber, p.ChatID, bodyText, p.MessageID)

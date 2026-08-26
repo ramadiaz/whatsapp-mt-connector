@@ -138,7 +138,7 @@ func (s *CommandService) HandleCommand(ctx context.Context, senderNumber, chatID
 }
 
 func (s *CommandService) handleHelpCommand(ctx context.Context, chatID string, cmd *ParsedCommand, messageID string) error {
-	msg := "Daftar Admin Command:\n- `/blacklist` : Kelola nomor diblokir (`add`, `remove`, `list`)\n- `/users` : Lihat daftar pengguna terdaftar\n- `/stats` : Lihat statistik & status sistem\n- `/help` : Tampilkan bantuan\n\nTips: Tambahkan `--help` atau `-h` pada command untuk melihat opsi."
+	msg := "Daftar Command:\n- `/cal` : Hitung kalori dari teks / gambar makanan\n- `/blacklist` : Kelola nomor diblokir (`add`, `remove`, `list`)\n- `/users` : Lihat daftar pengguna terdaftar\n- `/stats` : Lihat statistik & status sistem\n- `/help` : Tampilkan bantuan\n\nTips: Tambahkan `--help` atau `-h` pada command untuk melihat opsi."
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
 }
 
