@@ -82,5 +82,5 @@ func NewRetryTransactionTask(pendingTransactionUUID string, correlationID string
 	if err != nil {
 		return nil, fmt.Errorf("marshal retry payload: %w", err)
 	}
-	return asynq.NewTask(TypeRetryTransaction, payload), nil
+	return asynq.NewTask(TypeRetryTransaction, payload, asynq.MaxRetry(3), asynq.TTL(24*time.Hour)), nil
 }

@@ -77,5 +77,5 @@ func (h *DailyReminderHandler) ProcessTask(ctx context.Context, _ *asynq.Task) e
 
 func NewDailyReminderTask() *asynq.Task {
 	payload, _ := json.Marshal(map[string]string{})
-	return asynq.NewTask(TypeDailyReminder, payload)
+	return asynq.NewTask(TypeDailyReminder, payload, asynq.MaxRetry(2), asynq.TTL(12*time.Hour))
 }
