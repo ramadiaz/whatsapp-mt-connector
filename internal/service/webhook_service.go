@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/inbound"
@@ -126,7 +125,6 @@ func (s *WebhookService) Handle(ctx context.Context, correlationID string, body 
 	task := asynq.NewTask("process:message", payload,
 		asynq.Queue("default"),
 		asynq.MaxRetry(5),
-		asynq.TTL(24*time.Hour),
 	)
 	_, err = s.asynqClient.EnqueueContext(ctx, task)
 	if err != nil {

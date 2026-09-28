@@ -88,5 +88,5 @@ func (h *RefreshMTCacheHandler) ProcessTask(ctx context.Context, _ *asynq.Task) 
 
 func NewRefreshCacheTask() *asynq.Task {
 	payload, _ := json.Marshal(map[string]string{})
-	return asynq.NewTask(TypeRefreshMTCache, payload, asynq.MaxRetry(2), asynq.TTL(12*time.Hour))
+	return asynq.NewTask(TypeRefreshMTCache, payload, asynq.MaxRetry(2))
 }
