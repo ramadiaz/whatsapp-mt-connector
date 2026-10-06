@@ -103,7 +103,7 @@ func Run() error {
 	calorieSvc := service.NewCalorieService(gowaClient, nineClient, cfg.GOWADeviceID, cfg.MaxMediaBytes)
 	txSvc := service.NewTransactionService(mtClient, catCacheRepo, accCacheRepo, pendingRepo, submissionRepo)
 	confirmationSvc := service.NewConfirmationService(pendingRepo, txSvc, gowaClient, cfg.GOWADeviceID)
-	commandSvc := service.NewCommandService(cfg.AllowedNumbers, blacklistRepo, userRepo, db, gowaClient, cfg.GOWADeviceID)
+	commandSvc := service.NewCommandService(cfg.AllowedNumbers, blacklistRepo, userRepo, db, gowaClient, cfg.GOWADeviceID, cfg.GoPayClientURL)
 
 	processHandler := jobs.NewProcessMessageHandler(inboundRepo, blacklistRepo, userRepo, parserSvc, calorieSvc, txSvc, confirmationSvc, commandSvc, gowaClient, cfg.GOWADeviceID, cfg.AllowedNumbers, cfg.MTAPIKey, cfg.MTHost)
 	refreshHandler := jobs.NewRefreshMTCacheHandler(db, userRepo, catCacheRepo, accCacheRepo, cfg.MTHost, cfg.MTAPIKey)

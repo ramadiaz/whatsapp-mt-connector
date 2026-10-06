@@ -1,10 +1,12 @@
 package gowa
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 
 type WhatsAppGateway interface {
 	SendText(ctx context.Context, deviceID, chatID, message string, replyToID string) error
+	SendImage(ctx context.Context, deviceID, chatID, caption string, imageData []byte, filename string, replyToID string) error
 	SendChatPresence(ctx context.Context, deviceID, chatID, action string) error
 	DownloadMessageMedia(ctx context.Context, deviceID, messageID, phone string) ([]byte, string, error)
 	Health(ctx context.Context) error
@@ -69,6 +72,51 @@ func (c *Client) SendText(ctx context.Context, deviceID, chatID, message string,
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("gowa send text: http %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) SendImage(ctx context.Context, deviceID, chatID, caption string, imageData []byte, filename string, replyToID string) error {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	_ = writer.WriteField("phone", chatID)
+	if caption != "" {
+		_ = writer.WriteField("caption", caption)
+	}
+	if replyToID != "" {
+		_ = writer.WriteField("reply_message_id", replyToID)
+	}
+
+	if filename == "" {
+		filename = "image.png"
+	}
+	part, err := writer.CreateFormFile("image", filename)
+	if err != nil {
+		return fmt.Errorf("gowa send image create part: %w", err)
+	}
+	if _, err := part.Write(imageData); err != nil {
+		return fmt.Errorf("gowa send image write data: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("gowa send image close writer: %w", err)
+	}
+
+	req, err := c.newRequest(ctx, http.MethodPost, "/send/image", &body)
+	if err != nil {
+		return fmt.Errorf("gowa send image: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("X-Device-Id", deviceID)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gowa send image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("gowa send image: http %d", resp.StatusCode)
 	}
 	return nil
 }

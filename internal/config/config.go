@@ -41,6 +41,7 @@ type Config struct {
 	MaxAIRetries           int
 	AITimeoutSeconds       int
 	MTCacheTTLMinutes      int
+	GoPayClientURL         string
 }
 
 func Load() (*Config, error) {
@@ -76,6 +77,7 @@ func Load() (*Config, error) {
 		MaxAIRetries:            parseInt(getEnv("MAX_AI_RETRIES", "1")),
 		AITimeoutSeconds:        parseInt(getEnv("AI_TIMEOUT_SECONDS", "45")),
 		MTCacheTTLMinutes:       parseInt(getEnv("MT_CACHE_TTL_MINUTES", "60")),
+		GoPayClientURL:          getEnv("GOPAY_CLIENT_URL", "http://localhost:8085"),
 	}
 
 	raw := mustGet("WHATSAPP_ADMINISTRATOR_NUMBER")
