@@ -166,3 +166,26 @@ func (Blacklist) TableName() string {
 	return "blacklists"
 }
 
+type Contact struct {
+	ID             int64          `gorm:"primaryKey;autoIncrement;index;column:id"`
+	UUID           string         `gorm:"uniqueIndex;index;column:uuid;not null"`
+	Name           string         `gorm:"column:name;index:idx_contact_name;not null"`
+	NormalizedName string         `gorm:"column:normalized_name;index:idx_contact_normalized_name;not null"`
+	PhoneNumber    string         `gorm:"column:phone_number;uniqueIndex;not null"`
+	CreatedBy      string         `gorm:"column:created_by"`
+	CreatedAt      time.Time      `gorm:"column:created_at;default:now()"`
+	UpdatedAt      time.Time      `gorm:"column:updated_at;default:now()"`
+	DeletedAt      gorm.DeletedAt `gorm:"column:deleted_at;index"`
+}
+
+func (c *Contact) BeforeCreate(tx *gorm.DB) error {
+	if c.UUID == "" {
+		c.UUID = uuid.NewString()
+	}
+	return nil
+}
+
+func (Contact) TableName() string {
+	return "contacts"
+}
+

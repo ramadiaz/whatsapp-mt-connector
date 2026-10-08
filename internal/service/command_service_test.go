@@ -112,6 +112,20 @@ func TestParsePaymentBilling(t *testing.T) {
 			wantErr:     false,
 		},
 		{
+			input:       "/payment tagih 5rb ke 628123456789 a/n Rama, patungan sesuatu",
+			expectedAmt: 5000,
+			expectedTel: "628123456789",
+			expectedDes: "patungan sesuatu",
+			wantErr:     false,
+		},
+		{
+			input:       "/payment tagih 5rb ke rama, patungan sesuatu",
+			expectedAmt: 5000,
+			expectedTel: "",
+			expectedDes: "patungan sesuatu",
+			wantErr:     false,
+		},
+		{
 			input:   "/payment",
 			wantErr: true,
 		},

@@ -22,7 +22,9 @@ import (
 
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/blacklist"
 	gowaintegration "github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/integration/ninerouter"
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/persistence/postgres"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/shared/logger"
 	"gorm.io/gorm"
 )
 
@@ -41,6 +43,7 @@ type CommandService struct {
 	deviceID       string
 	gopayClientURL string
 	httpClient     *http.Client
+	nineRouter     *ninerouter.Client
 }
 
 func NewCommandService(
@@ -51,6 +54,7 @@ func NewCommandService(
 	gowaClient gowaintegration.WhatsAppGateway,
 	deviceID string,
 	gopayClientURL string,
+	nineRouter *ninerouter.Client,
 ) *CommandService {
 	if gopayClientURL == "" {
 		gopayClientURL = "http://localhost:8085"
@@ -64,6 +68,7 @@ func NewCommandService(
 		deviceID:       deviceID,
 		gopayClientURL: strings.TrimRight(gopayClientURL, "/"),
 		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		nineRouter:     nineRouter,
 	}
 }
 
@@ -154,6 +159,8 @@ func (s *CommandService) HandleCommand(ctx context.Context, senderNumber, chatID
 		return s.handleStatsCommand(ctx, chatID, cmd, messageID)
 	case "payment", "pay", "tagih":
 		return s.handlePaymentCommand(ctx, senderNumber, chatID, body, cmd, messageID)
+	case "contacts", "contact", "kontak":
+		return s.handleContactsCommand(ctx, senderNumber, chatID, cmd, messageID)
 	case "help":
 		return s.handleHelpCommand(ctx, chatID, cmd, messageID)
 	default:
@@ -163,7 +170,7 @@ func (s *CommandService) HandleCommand(ctx context.Context, senderNumber, chatID
 }
 
 func (s *CommandService) handleHelpCommand(ctx context.Context, chatID string, cmd *ParsedCommand, messageID string) error {
-	msg := "Daftar Command:\n- `/payment` : Tagih utang via QRIS dinamis GoPay Merchant (`/payment tagih 50rb ke 62813xxxxx bayar kopi`)\n- `/cal` : Hitung kalori dari teks / gambar makanan\n- `/blacklist` : Kelola nomor diblokir (`add`, `remove`, `list`)\n- `/users` : Lihat daftar pengguna terdaftar\n- `/stats` : Lihat statistik & status sistem\n- `/help` : Tampilkan bantuan\n\nTips: Tambahkan `--help` atau `-h` pada command untuk melihat opsi."
+	msg := "Daftar Command:\n- `/payment` : Tagih utang via QRIS dinamis GoPay Merchant (`/payment tagih 50rb ke 62813xxxxx a/n Rama, bayar kopi`)\n- `/contacts` : Kelola kontak tersimpan (`/contacts` / `/contacts delete <nama>`)\n- `/cal` : Hitung kalori dari teks / gambar makanan\n- `/blacklist` : Kelola nomor diblokir (`add`, `remove`, `list`)\n- `/users` : Lihat daftar pengguna terdaftar\n- `/stats` : Lihat statistik & status sistem\n- `/help` : Tampilkan bantuan\n\nTips: Tambahkan `--help` atau `-h` pada command untuk melihat opsi."
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
 }
 
@@ -288,10 +295,79 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 		return s.checkPaymentStatus(ctx, chatID, orderID, messageID)
 	}
 
-	// Parse billing parameters
-	req, err := parsePaymentBilling(rawBody)
+	// Parse billing parameters using 9Router AI with rule-based fallback
+	req, err := s.parsePaymentBillingWithAI(ctx, rawBody)
 	if err != nil {
-		msg := fmt.Sprintf("⚠️ Format tagihan salah: %v\n\nContoh yang benar:\n`/payment tagih 50rb ke 62813xxxxx bayar kopi`", err)
+		msg := fmt.Sprintf("⚠️ Format tagihan salah: %v\n\nContoh yang benar:\n`/payment tagih 50rb ke 62813xxxxx a/n Rama, bayar kopi`\natau jika kontak sudah tersimpan:\n`/payment tagih 50rb ke rama, bayar kopi`", err)
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+	}
+
+	var targetPhone string
+	var recipientName string
+
+	if req.TargetPhone != "" {
+		cleanPhone := cleanPhoneNumber(req.TargetPhone)
+		var existingContact postgres.Contact
+		err := s.db.WithContext(ctx).Where("phone_number = ?", cleanPhone).First(&existingContact).Error
+		if err == nil {
+			targetPhone = cleanPhone
+			recipientName = existingContact.Name
+			if req.TargetName != "" && req.TargetName != existingContact.Name {
+				existingContact.Name = req.TargetName
+				existingContact.NormalizedName = strings.ToLower(strings.TrimSpace(req.TargetName))
+				_ = s.db.WithContext(ctx).Save(&existingContact)
+				recipientName = req.TargetName
+			}
+		} else {
+			if req.TargetName != "" {
+				newContact := postgres.Contact{
+					Name:           req.TargetName,
+					NormalizedName: strings.ToLower(strings.TrimSpace(req.TargetName)),
+					PhoneNumber:    cleanPhone,
+					CreatedBy:      senderNumber,
+				}
+				_ = s.db.WithContext(ctx).Create(&newContact)
+				targetPhone = cleanPhone
+				recipientName = req.TargetName
+			} else {
+				msg := fmt.Sprintf(
+					"⚠️ Nomor *%s* belum terdaftar di kontak.\n\n"+
+						"Silakan sertakan nama tujuan agar nomor tersimpan otomatis ke database:\n"+
+						"`/payment tagih %s ke %s a/n <Nama Tujuan>, %s`\n\n"+
+						"Contoh:\n"+
+						"`/payment tagih %s ke %s a/n Rama, %s`",
+					cleanPhone,
+					formatRupiah(req.Amount), cleanPhone, req.Description,
+					formatRupiah(req.Amount), cleanPhone, req.Description,
+				)
+				return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+			}
+		}
+	} else if req.TargetName != "" {
+		normName := strings.ToLower(strings.TrimSpace(req.TargetName))
+		var existingContact postgres.Contact
+		err := s.db.WithContext(ctx).Where("normalized_name = ? OR LOWER(name) = ?", normName, normName).First(&existingContact).Error
+		if err != nil {
+			err = s.db.WithContext(ctx).Where("normalized_name LIKE ?", normName+"%").First(&existingContact).Error
+		}
+		if err == nil {
+			targetPhone = existingContact.PhoneNumber
+			recipientName = existingContact.Name
+		} else {
+			msg := fmt.Sprintf(
+				"⚠️ Kontak *%s* belum terdaftar di database.\n\n"+
+					"Untuk transaksi pertama kali, gunakan nomor telepon dan sertakan nama tujuan:\n"+
+					"`/payment tagih %s ke <nomor_hp> a/n %s, %s`\n\n"+
+					"Contoh:\n"+
+					"`/payment tagih %s ke 08123456789 a/n %s, %s`",
+				req.TargetName,
+				formatRupiah(req.Amount), req.TargetName, req.Description,
+				formatRupiah(req.Amount), req.TargetName, req.Description,
+			)
+			return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+		}
+	} else {
+		msg := "⚠️ Nomor tujuan atau nama kontak belum ditentukan."
 		return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
 	}
 
@@ -300,7 +376,7 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 	payload := map[string]any{
 		"amount":         req.Amount,
 		"description":    req.Description,
-		"payer_phone":    req.TargetPhone,
+		"payer_phone":    targetPhone,
 		"admin_phone":    senderNumber,
 		"expiry_minutes": 360,
 	}
@@ -345,6 +421,11 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal membaca respons dari GoPay Client.", messageID)
 	}
 
+	displayRecipient := targetPhone
+	if recipientName != "" {
+		displayRecipient = fmt.Sprintf("%s (%s)", recipientName, targetPhone)
+	}
+
 	successMsg := fmt.Sprintf(
 		"🧾 *TAGIHAN QRIS BERHASIL DIBUAT*\n\n"+
 			"• *Penerima:* %s\n"+
@@ -354,22 +435,27 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 			"• *Status:* Menunggu Pembayaran (6 jam)\n\n"+
 			"Kode QRIS Dinamis dan rincian invoice telah dikirimkan ke WhatsApp %s.\n"+
 			"_Sistem akan otomatis memberi tahu Anda begitu tagihan lunas._",
-		req.TargetPhone,
+		displayRecipient,
 		formatRupiah(req.Amount),
 		req.Description,
 		apiResp.Data.OrderID,
-		req.TargetPhone,
+		displayRecipient,
 	)
 
 	// SEND THE ACTUAL QRIS TO TARGET
 	go func() {
-		targetChatID := req.TargetPhone + "@s.whatsapp.net"
+		targetChatID := targetPhone + "@s.whatsapp.net"
+		greeting := "Halo!"
+		if recipientName != "" {
+			greeting = fmt.Sprintf("Halo *%s*!", recipientName)
+		}
 		targetMsg := fmt.Sprintf(
-			"Halo! Anda menerima tagihan baru dari *GoPay Merchant*\n\n" +
+			"%s Anda menerima tagihan baru dari *GoPay Merchant*\n\n" +
 			"• *Nominal:* Rp %s\n" +
 			"• *Keperluan:* %s\n" +
 			"• *Order ID:* %s\n\n" +
 			"Silakan scan kode QRIS di bawah ini menggunakan aplikasi M-Banking atau E-Wallet Anda. Tagihan ini akan otomatis kedaluwarsa dalam 6 jam.",
+			greeting,
 			formatRupiah(req.Amount), req.Description, apiResp.Data.OrderID,
 		)
 		
@@ -448,9 +534,78 @@ func (s *CommandService) checkPaymentStatus(ctx context.Context, chatID, orderID
 }
 
 type PaymentBillingInput struct {
-	Amount      float64
-	TargetPhone string
-	Description string
+	Amount      float64 `json:"amount"`
+	TargetPhone string  `json:"target_phone"`
+	TargetName  string  `json:"target_name"`
+	Description string  `json:"description"`
+}
+
+const paymentBillingSystemPrompt = `You are an AI payment billing parser for an Indonesian WhatsApp merchant bot.
+Your job is to parse a billing / invoice command from the user into JSON.
+Examples of user commands:
+- "/payment tagih 5rb ke 62812345678 a/n Rama, patungan sesuatu"
+- "/payment tagih 50rb ke 0812345678 a.n. Rama Diaz, makan siang"
+- "/payment tagih 10k ke 62812345678 an Budi, kas kantor"
+- "/payment tagih 5rb ke 62812345678, patungan sesuatu"
+- "/payment tagih 5rb ke rama, patungan sesuatu"
+- "/payment tagih 15rb ke Budi Santoso, makan siang"
+- "/payment tagih 50rb ke 6281312345678 bayar kopi"
+
+Output must be strict valid JSON only, without markdown fences or additional text:
+{
+  "amount": <number in IDR, e.g. 5000, 50000>,
+  "target_phone": "<phone number starting with 628 without +, spaces, or dashes, or empty string if no phone number was given>",
+  "target_name": "<name of the recipient if given via a/n, atas nama, or directly after ke, otherwise empty string>",
+  "description": "<purpose/remark of the bill, default to 'Tagihan Pembayaran' if omitted>"
+}`
+
+func (s *CommandService) parsePaymentBillingWithAI(ctx context.Context, rawInput string) (*PaymentBillingInput, error) {
+	if s.nineRouter != nil {
+		messages := []ninerouter.Message{
+			{
+				Role:    "user",
+				Content: rawInput,
+			},
+		}
+
+		logger.Log.Info().Str("input", rawInput).Msg("calling 9Router AI for payment billing parsing")
+		rawJSON, err := s.nineRouter.Complete(ctx, s.nineRouter.Model(), paymentBillingSystemPrompt, messages, 300)
+		if err == nil {
+			cleaned := strings.TrimSpace(rawJSON)
+			if strings.HasPrefix(cleaned, "```") {
+				lines := strings.Split(cleaned, "\n")
+				var inner []string
+				for _, line := range lines {
+					if strings.HasPrefix(line, "```") {
+						continue
+					}
+					inner = append(inner, line)
+				}
+				cleaned = strings.Join(inner, "\n")
+			}
+			cleaned = strings.TrimSpace(cleaned)
+
+			var aiResult PaymentBillingInput
+			if err := json.Unmarshal([]byte(cleaned), &aiResult); err == nil && aiResult.Amount > 0 {
+				if aiResult.TargetPhone != "" {
+					aiResult.TargetPhone = cleanPhoneNumber(aiResult.TargetPhone)
+				}
+				aiResult.TargetName = strings.TrimSpace(aiResult.TargetName)
+				aiResult.Description = strings.TrimSpace(aiResult.Description)
+				if aiResult.Description == "" {
+					aiResult.Description = "Tagihan Pembayaran"
+				}
+				logger.Log.Info().Interface("ai_result", aiResult).Msg("9Router AI billing parsing succeeded")
+				return &aiResult, nil
+			} else if err != nil {
+				logger.Log.Warn().Err(err).Str("raw_json", cleaned).Msg("failed to unmarshal 9Router AI billing response")
+			}
+		} else {
+			logger.Log.Warn().Err(err).Msg("9Router AI billing completion failed, falling back to rule-based parser")
+		}
+	}
+
+	return parsePaymentBilling(rawInput)
 }
 
 func parsePaymentBilling(rawInput string) (*PaymentBillingInput, error) {
@@ -474,53 +629,136 @@ func parsePaymentBilling(rawInput string) (*PaymentBillingInput, error) {
 
 	var amount float64
 	var targetPhone string
-	var descTokens []string
+	var targetName string
 
-	i := 0
-	for i < len(tokens) {
-		token := tokens[i]
-		lower := strings.ToLower(token)
-
-		if lower == "ke" && i+1 < len(tokens) {
-			targetPhone = cleanPhoneNumber(tokens[i+1])
-			i += 2
-			continue
-		}
-
-		if targetPhone == "" && isPhoneNumber(token) {
-			targetPhone = cleanPhoneNumber(token)
-			i++
-			continue
-		}
-
+	var remainingTokens []string
+	for _, token := range tokens {
 		if amount == 0 {
 			if parsed, ok := parseCurrency(token); ok && parsed > 0 {
 				amount = parsed
-				i++
 				continue
 			}
 		}
-
-		descTokens = append(descTokens, token)
-		i++
+		remainingTokens = append(remainingTokens, token)
 	}
 
 	if amount <= 0 {
 		return nil, fmt.Errorf("nominal tagihan tidak valid")
 	}
-	if targetPhone == "" {
-		return nil, fmt.Errorf("nomor tujuan belum ditentukan (format: 'ke 62813xxxx')")
+	if len(remainingTokens) == 0 {
+		return nil, fmt.Errorf("nomor tujuan atau nama kontak belum ditentukan")
 	}
 
-	desc := strings.Join(descTokens, " ")
-	if desc == "" {
-		desc = "Tagihan Pembayaran"
+	remStr := strings.Join(remainingTokens, " ")
+
+	var targetClause string
+	var descClause string
+	hasComma := false
+	if commaIdx := strings.Index(remStr, ","); commaIdx != -1 {
+		targetClause = strings.TrimSpace(remStr[:commaIdx])
+		descClause = strings.TrimSpace(remStr[commaIdx+1:])
+		hasComma = true
+	} else {
+		targetClause = remStr
+	}
+
+	targetTokens := strings.Fields(targetClause)
+
+	anIndex := -1
+	anLen := 1
+	for idx, tok := range targetTokens {
+		cleanTok := strings.Trim(strings.ToLower(tok), ".,")
+		if cleanTok == "a/n" || cleanTok == "a.n" || cleanTok == "an" {
+			anIndex = idx
+			anLen = 1
+			break
+		}
+		if cleanTok == "atas" && idx+1 < len(targetTokens) && strings.Trim(strings.ToLower(targetTokens[idx+1]), ".,") == "nama" {
+			anIndex = idx
+			anLen = 2
+			break
+		}
+	}
+
+	if anIndex != -1 {
+		nameTokens := targetTokens[anIndex+anLen:]
+		if hasComma {
+			targetName = strings.Trim(strings.Join(nameTokens, " "), ",. ")
+		} else {
+			if len(nameTokens) > 0 {
+				targetName = strings.Trim(nameTokens[0], ",. ")
+				if descClause == "" && len(nameTokens) > 1 {
+					descClause = strings.Join(nameTokens[1:], " ")
+				}
+			}
+		}
+
+		beforeTokens := targetTokens[:anIndex]
+		for idx, tok := range beforeTokens {
+			if strings.ToLower(tok) == "ke" && idx+1 < len(beforeTokens) {
+				candidate := beforeTokens[idx+1]
+				if isPhoneNumber(candidate) {
+					targetPhone = cleanPhoneNumber(candidate)
+				}
+				continue
+			}
+			if targetPhone == "" && isPhoneNumber(tok) {
+				targetPhone = cleanPhoneNumber(tok)
+			}
+		}
+	} else {
+		keIndex := -1
+		for idx, tok := range targetTokens {
+			if strings.ToLower(tok) == "ke" {
+				keIndex = idx
+				break
+			}
+		}
+
+		if keIndex != -1 && keIndex+1 < len(targetTokens) {
+			candidate := targetTokens[keIndex+1]
+			if isPhoneNumber(candidate) {
+				targetPhone = cleanPhoneNumber(candidate)
+				if descClause == "" && len(targetTokens) > keIndex+2 {
+					descClause = strings.Join(targetTokens[keIndex+2:], " ")
+				}
+			} else {
+				if hasComma {
+					targetName = strings.Trim(strings.Join(targetTokens[keIndex+1:], " "), ",. ")
+				} else {
+					targetName = candidate
+					if descClause == "" && len(targetTokens) > keIndex+2 {
+						descClause = strings.Join(targetTokens[keIndex+2:], " ")
+					}
+				}
+			}
+		} else {
+			for idx, tok := range targetTokens {
+				if isPhoneNumber(tok) {
+					targetPhone = cleanPhoneNumber(tok)
+					if descClause == "" && len(targetTokens) > idx+1 {
+						descClause = strings.Join(targetTokens[idx+1:], " ")
+					}
+					break
+				}
+			}
+		}
+	}
+
+	if targetPhone == "" && targetName == "" {
+		return nil, fmt.Errorf("nomor tujuan atau nama kontak belum ditentukan")
+	}
+
+	descClause = strings.TrimSpace(descClause)
+	if descClause == "" {
+		descClause = "Tagihan Pembayaran"
 	}
 
 	return &PaymentBillingInput{
 		Amount:      amount,
 		TargetPhone: targetPhone,
-		Description: desc,
+		TargetName:  targetName,
+		Description: descClause,
 	}, nil
 }
 
@@ -699,3 +937,42 @@ func (s *CommandService) generateCompositeQRIS(qrisString, storeName, nominal st
 
 	return buf.Bytes(), nil
 }
+
+func (s *CommandService) handleContactsCommand(ctx context.Context, senderNumber, chatID string, cmd *ParsedCommand, messageID string) error {
+	if cmd.HasHelpFlag() || (len(cmd.Args) > 0 && (cmd.Args[0] == "help" || cmd.Args[0] == "h")) {
+		msg := "Penggunaan command contacts:\n" +
+			"• `/contacts` atau `/contacts list` : Lihat daftar semua kontak terdaftar\n" +
+			"• `/contacts delete <nama/nomor>` : Hapus kontak dari database\n" +
+			"\nTips: Kontak otomatis tersimpan saat Anda menagih dengan format:\n`/payment tagih <nominal> ke <nomor> a/n <nama>, <ket>`"
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, msg, messageID)
+	}
+
+	if len(cmd.Args) >= 2 && (strings.ToLower(cmd.Args[0]) == "delete" || strings.ToLower(cmd.Args[0]) == "del" || strings.ToLower(cmd.Args[0]) == "remove") {
+		target := strings.TrimSpace(cmd.Args[1])
+		norm := strings.ToLower(target)
+		err := s.db.WithContext(ctx).Where("phone_number = ? OR normalized_name = ? OR LOWER(name) = ?", target, norm, norm).Delete(&postgres.Contact{}).Error
+		if err != nil {
+			return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal menghapus kontak.", messageID)
+		}
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, fmt.Sprintf("Kontak *%s* berhasil dihapus.", target), messageID)
+	}
+
+	var contacts []postgres.Contact
+	if err := s.db.WithContext(ctx).Order("name ASC").Find(&contacts).Error; err != nil {
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal mengambil daftar kontak.", messageID)
+	}
+
+	if len(contacts) == 0 {
+		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Belum ada kontak tersimpan.\n\nKontak akan otomatis tersimpan saat Anda menagih dengan format:\n`/payment tagih 50rb ke 628xxxx a/n Nama, ket`", messageID)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("📖 *DAFTAR KONTAK TERDAFTAR (%d)*\n\n", len(contacts)))
+	for idx, c := range contacts {
+		sb.WriteString(fmt.Sprintf("%d. *%s* - `%s`\n", idx+1, c.Name, c.PhoneNumber))
+	}
+	sb.WriteString("\n_Gunakan `/payment tagih <nominal> ke <nama>, <ket>` untuk menagih langsung._")
+
+	return s.gowaClient.SendText(ctx, s.deviceID, chatID, sb.String(), messageID)
+}
+
