@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -91,7 +92,15 @@ func (c *Client) SendImage(ctx context.Context, deviceID, chatID, caption string
 	if filename == "" {
 		filename = "image.png"
 	}
-	part, err := writer.CreateFormFile("image", filename)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, filename))
+	// Deteksi otomatis atau paksa image/png agar middleware GOWA tidak menolak
+	contentType := "image/png"
+	if strings.HasSuffix(strings.ToLower(filename), ".jpeg") || strings.HasSuffix(strings.ToLower(filename), ".jpg") {
+		contentType = "image/jpeg"
+	}
+	h.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(h)
 	if err != nil {
 		return fmt.Errorf("gowa send image create part: %w", err)
 	}

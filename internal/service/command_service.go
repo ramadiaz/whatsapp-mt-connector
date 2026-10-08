@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"github.com/skip2/go-qrcode"
 	"strconv"
 	"strings"
 	"time"
@@ -287,7 +288,7 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 	}
 
 	// Call GoPay Client API
-	url := fmt.Sprintf("%s/api/v1/bills", s.gopayClientURL)
+	endpoint := fmt.Sprintf("%s/api/v1/bills", s.gopayClientURL)
 	payload := map[string]any{
 		"amount":         req.Amount,
 		"description":    req.Description,
@@ -301,7 +302,7 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal memproses data tagihan.", messageID)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
 	if err != nil {
 		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal membuat request ke service GoPay.", messageID)
 	}
@@ -351,12 +352,34 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 		req.TargetPhone,
 	)
 
+	// SEND THE ACTUAL QRIS TO TARGET
+	go func() {
+		targetChatID := req.TargetPhone + "@s.whatsapp.net"
+		targetMsg := fmt.Sprintf(
+			"Halo! Anda menerima tagihan baru dari *GoPay Merchant*\n\n" +
+			"• *Nominal:* Rp %s\n" +
+			"• *Keperluan:* %s\n" +
+			"• *Order ID:* %s\n\n" +
+			"Silakan scan kode QRIS di bawah ini menggunakan aplikasi M-Banking atau E-Wallet Anda. Tagihan ini akan otomatis kedaluwarsa dalam 15 menit.",
+			formatRupiah(req.Amount), req.Description, apiResp.Data.OrderID,
+		)
+		
+		// Generate QRIS code natively using go-qrcode
+		pngBytes, err := qrcode.Encode(apiResp.Data.QRISString, qrcode.Medium, 300)
+		if err == nil {
+			// Send Image
+			_ = s.gowaClient.SendImage(context.Background(), s.deviceID, targetChatID, targetMsg, pngBytes, "qris.png", "")
+		} else {
+			_ = s.gowaClient.SendText(context.Background(), s.deviceID, targetChatID, targetMsg + "\n\n(Gambar QRIS gagal dimuat secara internal, silakan hubungi admin)", "")
+		}
+	}()
+
 	return s.gowaClient.SendText(ctx, s.deviceID, chatID, successMsg, messageID)
 }
 
 func (s *CommandService) checkPaymentStatus(ctx context.Context, chatID, orderID, messageID string) error {
-	url := fmt.Sprintf("%s/api/v1/bills/%s", s.gopayClientURL, orderID)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	endpoint := fmt.Sprintf("%s/api/v1/bills/%s", s.gopayClientURL, orderID)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return s.gowaClient.SendText(ctx, s.deviceID, chatID, "Gagal membuat request status.", messageID)
 	}
