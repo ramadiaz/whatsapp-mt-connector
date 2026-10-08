@@ -302,7 +302,7 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 		"description":    req.Description,
 		"payer_phone":    req.TargetPhone,
 		"admin_phone":    senderNumber,
-		"expiry_minutes": 15,
+		"expiry_minutes": 360,
 	}
 
 	b, err := json.Marshal(payload)
@@ -351,7 +351,7 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 			"• *Nominal:* Rp %s\n"+
 			"• *Keperluan:* %s\n"+
 			"• *Order ID:* `%s`\n"+
-			"• *Status:* Menunggu Pembayaran (15 menit)\n\n"+
+			"• *Status:* Menunggu Pembayaran (6 jam)\n\n"+
 			"Kode QRIS Dinamis dan rincian invoice telah dikirimkan ke WhatsApp %s.\n"+
 			"_Sistem akan otomatis memberi tahu Anda begitu tagihan lunas._",
 		req.TargetPhone,
@@ -369,12 +369,12 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 			"• *Nominal:* Rp %s\n" +
 			"• *Keperluan:* %s\n" +
 			"• *Order ID:* %s\n\n" +
-			"Silakan scan kode QRIS di bawah ini menggunakan aplikasi M-Banking atau E-Wallet Anda. Tagihan ini akan otomatis kedaluwarsa dalam 15 menit.",
+			"Silakan scan kode QRIS di bawah ini menggunakan aplikasi M-Banking atau E-Wallet Anda. Tagihan ini akan otomatis kedaluwarsa dalam 6 jam.",
 			formatRupiah(req.Amount), req.Description, apiResp.Data.OrderID,
 		)
 		
 		// Generate QRIS with official template natively
-		expiryTime := time.Now().Add(15 * time.Minute)
+		expiryTime := time.Now().Add(6 * time.Hour)
 		if apiResp.Data.ExpiresAt != "" {
 			if t, err := time.Parse(time.RFC3339, apiResp.Data.ExpiresAt); err == nil {
 				expiryTime = t
@@ -665,7 +665,7 @@ func (s *CommandService) generateCompositeQRIS(qrisString, storeName, nominal st
 
 	// 2. Draw Expired Time ("hingga 07 Oct 2026 21:12 WIB")
 	if expiry.IsZero() {
-		expiry = time.Now().Add(15 * time.Minute)
+		expiry = time.Now().Add(6 * time.Hour)
 	}
 	locWIB := time.FixedZone("WIB", 7*3600)
 	expiryFormatted := expiry.In(locWIB).Format("02 Jan 2006 15:04 WIB")
