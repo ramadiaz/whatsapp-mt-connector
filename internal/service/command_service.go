@@ -7,12 +7,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"github.com/skip2/go-qrcode"
-	"github.com/fogleman/gg"
-	"image"
 	"strconv"
 	"strings"
 	"time"
+
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+
+	"github.com/fogleman/gg"
+	"github.com/golang/freetype/truetype"
+	"github.com/ramadiaz/whatsapp-mt-connector/internal/assets"
+	"github.com/skip2/go-qrcode"
 
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/domain/blacklist"
 	gowaintegration "github.com/ramadiaz/whatsapp-mt-connector/internal/integration/gowa"
@@ -590,42 +596,41 @@ func formatRupiah(amount float64) string {
 }
 
 func (s *CommandService) generateCompositeQRIS(qrisString, storeName, nominal string) ([]byte, error) {
-	im, err := gg.LoadImage("assets/qris_template.jpg")
+	templateImg, _, err := image.Decode(bytes.NewReader(assets.QRISTemplate))
 	if err != nil {
-		return nil, fmt.Errorf("load template: %v", err)
+		return nil, fmt.Errorf("decode template: %w", err)
 	}
 
 	qrBytes, err := qrcode.Encode(qrisString, qrcode.Medium, 440)
 	if err != nil {
-		return nil, fmt.Errorf("encode qr: %v", err)
+		return nil, fmt.Errorf("encode qr: %w", err)
 	}
 	qrImg, _, err := image.Decode(bytes.NewReader(qrBytes))
 	if err != nil {
-		return nil, fmt.Errorf("decode qr: %v", err)
+		return nil, fmt.Errorf("decode qr: %w", err)
 	}
 
-	dc := gg.NewContextForImage(im)
+	dc := gg.NewContextForImage(templateImg)
 
 	// Draw QR Code in the center
 	dc.DrawImageAnchored(qrImg, 426, 640, 0.5, 0.5)
 
-	// Draw Store Name
-	err = dc.LoadFontFace("assets/Roboto-Bold.ttf", 42)
+	font, err := truetype.Parse(assets.RobotoBold)
 	if err == nil {
+		faceStore := truetype.NewFace(font, &truetype.Options{Size: 42})
+		dc.SetFontFace(faceStore)
 		dc.SetHexColor("#000000")
 		dc.DrawStringAnchored(storeName, 426, 280, 0.5, 0.5)
-	}
 
-	// Draw Nominal
-	err = dc.LoadFontFace("assets/Roboto-Bold.ttf", 52)
-	if err == nil {
+		faceNominal := truetype.NewFace(font, &truetype.Options{Size: 52})
+		dc.SetFontFace(faceNominal)
 		dc.SetHexColor("#e3242b")
 		dc.DrawStringAnchored(fmt.Sprintf("Rp %s", nominal), 426, 1000, 0.5, 0.5)
 	}
 
 	buf := new(bytes.Buffer)
 	if err := dc.EncodePNG(buf); err != nil {
-		return nil, fmt.Errorf("encode composite png: %v", err)
+		return nil, fmt.Errorf("encode composite png: %w", err)
 	}
 
 	return buf.Bytes(), nil
