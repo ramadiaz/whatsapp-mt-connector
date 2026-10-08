@@ -445,27 +445,39 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 	// SEND THE ACTUAL QRIS TO TARGET
 	go func() {
 		targetChatID := targetPhone + "@s.whatsapp.net"
-		greeting := "Halo!"
+		payerDisplayName := targetPhone
 		if recipientName != "" {
-			greeting = fmt.Sprintf("Halo *%s*!", recipientName)
+			payerDisplayName = recipientName
 		}
-		targetMsg := fmt.Sprintf(
-			"%s Anda menerima tagihan baru dari *GoPay Merchant*\n\n" +
-			"• *Nominal:* Rp %s\n" +
-			"• *Keperluan:* %s\n" +
-			"• *Order ID:* %s\n\n" +
-			"Silakan scan kode QRIS di bawah ini menggunakan aplikasi M-Banking atau E-Wallet Anda. Tagihan ini akan otomatis kedaluwarsa dalam 6 jam.",
-			greeting,
-			formatRupiah(req.Amount), req.Description, apiResp.Data.OrderID,
-		)
-		
-		// Generate QRIS with official template natively
+
 		expiryTime := time.Now().Add(6 * time.Hour)
 		if apiResp.Data.ExpiresAt != "" {
 			if t, err := time.Parse(time.RFC3339, apiResp.Data.ExpiresAt); err == nil {
 				expiryTime = t
 			}
 		}
+		locWIB := time.FixedZone("WIB", 7*3600)
+		expiryWIB := expiryTime.In(locWIB)
+		expireStr := expiryWIB.Format("15:04 WIB")
+		if expiryWIB.Day() != time.Now().In(locWIB).Day() {
+			expireStr = expiryWIB.Format("02 Jan 2006 15:04 WIB")
+		}
+
+		targetMsg := fmt.Sprintf(
+			"Yth. %s,\n\n"+
+				"Sistem mendeteksi adanya nominal Rp%s yang masih berada di wilayah kekuasaan Anda.\n"+
+				"Mohon dikembalikan ke habitat aslinya sebelum %s.\n\n"+
+				"Note: %s\n"+
+				"ID: %s\n\n"+
+				"Terima kasih.",
+			payerDisplayName,
+			formatRupiah(req.Amount),
+			expireStr,
+			req.Description,
+			apiResp.Data.OrderID,
+		)
+		
+		// Generate QRIS with official template natively
 		finalBytes, err := s.generateCompositeQRIS(apiResp.Data.QRISString, "SanySoft", formatRupiah(req.Amount), expiryTime)
 		if err == nil {
 			// Send Image

@@ -84,9 +84,11 @@ func (h *PaymentWebhookHandler) handleSettlement(ctx context.Context, p PaymentN
 	cleanAdmin := cleanPhone(p.AdminPhone)
 
 	payerName := cleanPayer
+	payerDisplayName := cleanPayer
 	if h.db != nil && cleanPayer != "" {
 		var contact postgres.Contact
 		if err := h.db.WithContext(ctx).Where("phone_number = ?", cleanPayer).First(&contact).Error; err == nil && contact.Name != "" {
+			payerDisplayName = contact.Name
 			payerName = fmt.Sprintf("%s (%s)", contact.Name, cleanPayer)
 		}
 	}
@@ -126,14 +128,15 @@ func (h *PaymentWebhookHandler) handleSettlement(ctx context.Context, p PaymentN
 	if cleanPayer != "" {
 		payerChatID := cleanPayer + "@s.whatsapp.net"
 		payerMsg := fmt.Sprintf(
-			"✅ *PEMBAYARAN BERHASIL*\n\n"+
-				"Terima kasih! Pembayaran Anda sebesar *Rp %s* untuk *%s* telah berhasil diterima dan lunas.\n\n"+
-				"• *Order ID:* `%s`\n"+
-				"• *Waktu:* %s WIB",
+			"Yth. %s,\n\n"+
+				"Sistem telah mendeteksi kembalinya sejumlah Rp%s. Dana telah berhasil kembali ke habitat asalnya dan tagihan Anda resmi dinyatakan:\n\n"+
+				"LUNAS\n\n"+
+				"Terima kasih telah mengembalikan aset tersebut dengan selamat.\n"+
+				"Hubungan pertemanan Anda kini kembali berada dalam kondisi sehat dan stabil.\n\n"+
+				"ID: %s",
+			payerDisplayName,
 			nominalStr,
-			desc,
 			p.ID,
-			time.Now().In(time.FixedZone("WIB", 7*3600)).Format("02/01/2006 15:04"),
 		)
 
 		if err := h.gowaClient.SendText(ctx, h.deviceID, payerChatID, payerMsg, ""); err != nil {
