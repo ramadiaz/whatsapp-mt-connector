@@ -20,6 +20,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
 WORKDIR /app
 
 COPY --from=builder /whatsapp-mt-connector .
+COPY assets/ ./assets/
 
 USER appuser
 
