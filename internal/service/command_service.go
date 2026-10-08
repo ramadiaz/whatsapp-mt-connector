@@ -338,6 +338,7 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 			Description string  `json:"description"`
 			Status      string  `json:"status"`
 			QRISString  string  `json:"qris_string"`
+			ExpiresAt   string  `json:"expires_at"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
@@ -372,8 +373,14 @@ func (s *CommandService) handlePaymentCommand(ctx context.Context, senderNumber,
 			formatRupiah(req.Amount), req.Description, apiResp.Data.OrderID,
 		)
 		
-		// Generate QRIS with meme template natively
-		finalBytes, err := s.generateCompositeQRIS(apiResp.Data.QRISString, "SanySoft", formatRupiah(req.Amount))
+		// Generate QRIS with official template natively
+		expiryTime := time.Now().Add(15 * time.Minute)
+		if apiResp.Data.ExpiresAt != "" {
+			if t, err := time.Parse(time.RFC3339, apiResp.Data.ExpiresAt); err == nil {
+				expiryTime = t
+			}
+		}
+		finalBytes, err := s.generateCompositeQRIS(apiResp.Data.QRISString, "SanySoft", formatRupiah(req.Amount), expiryTime)
 		if err == nil {
 			// Send Image
 			_ = s.gowaClient.SendImage(context.Background(), s.deviceID, targetChatID, targetMsg, finalBytes, "qris.png", "")
@@ -595,38 +602,95 @@ func formatRupiah(amount float64) string {
 	return strings.Join(res, ".")
 }
 
-func (s *CommandService) generateCompositeQRIS(qrisString, storeName, nominal string) ([]byte, error) {
+func (s *CommandService) generateCompositeQRIS(qrisString, storeName, nominal string, expiry time.Time) ([]byte, error) {
 	templateImg, _, err := image.Decode(bytes.NewReader(assets.QRISTemplate))
 	if err != nil {
 		return nil, fmt.Errorf("decode template: %w", err)
 	}
 
-	qrBytes, err := qrcode.Encode(qrisString, qrcode.Medium, 440)
+	qr, err := qrcode.New(qrisString, qrcode.Medium)
 	if err != nil {
-		return nil, fmt.Errorf("encode qr: %w", err)
+		return nil, fmt.Errorf("create qr: %w", err)
 	}
-	qrImg, _, err := image.Decode(bytes.NewReader(qrBytes))
-	if err != nil {
-		return nil, fmt.Errorf("decode qr: %w", err)
-	}
+	qr.DisableBorder = true
+	qrImg := qr.Image(662)
 
 	dc := gg.NewContextForImage(templateImg)
 
-	// Draw QR Code in the center
-	dc.DrawImageAnchored(qrImg, 426, 640, 0.5, 0.5)
+	// Draw QR Code centered at (552, 825)
+	dc.DrawImageAnchored(qrImg, 552, 825, 0.5, 0.5)
 
-	font, err := truetype.Parse(assets.RobotoBold)
-	if err == nil {
-		faceStore := truetype.NewFace(font, &truetype.Options{Size: 42})
-		dc.SetFontFace(faceStore)
-		dc.SetHexColor("#000000")
-		dc.DrawStringAnchored(storeName, 426, 280, 0.5, 0.5)
-
-		faceNominal := truetype.NewFace(font, &truetype.Options{Size: 52})
-		dc.SetFontFace(faceNominal)
-		dc.SetHexColor("#e3242b")
-		dc.DrawStringAnchored(fmt.Sprintf("Rp %s", nominal), 426, 1000, 0.5, 0.5)
+	fontRobotoBold, err := truetype.Parse(assets.RobotoBold)
+	if err != nil {
+		return nil, fmt.Errorf("parse RobotoBold: %w", err)
 	}
+
+	fontRobotoReg, err := truetype.Parse(assets.RobotoRegular)
+	if err != nil {
+		return nil, fmt.Errorf("parse RobotoRegular: %w", err)
+	}
+
+	fontZilla, err := truetype.Parse(assets.ZillaSlabBold)
+	if err != nil {
+		return nil, fmt.Errorf("parse ZillaSlabBold: %w", err)
+	}
+
+	// 1. Draw Nominal ("Rp 40.000")
+	nominalClean := strings.TrimPrefix(strings.TrimSpace(nominal), "Rp")
+	nominalClean = strings.TrimSpace(nominalClean)
+
+	faceRp := truetype.NewFace(fontRobotoBold, &truetype.Options{Size: 34})
+	faceNominal := truetype.NewFace(fontZilla, &truetype.Options{Size: 58})
+
+	dc.SetFontFace(faceRp)
+	wRp, _ := dc.MeasureString("Rp")
+	gap := 10.0
+
+	dc.SetFontFace(faceNominal)
+	wNominal, _ := dc.MeasureString(nominalClean)
+
+	totalNominalW := wRp + gap + wNominal
+	startX := 552.0 - (totalNominalW / 2.0)
+	yBaseNominal := 338.0
+
+	// Draw "Rp" (top aligned with cap height of the numerals)
+	dc.SetFontFace(faceRp)
+	dc.SetHexColor("#616E7A")
+	dc.DrawString("Rp", startX, yBaseNominal-14)
+
+	// Draw nominal amount
+	dc.SetFontFace(faceNominal)
+	dc.SetHexColor("#1E2225")
+	dc.DrawString(nominalClean, startX+wRp+gap, yBaseNominal)
+
+	// 2. Draw Expired Time ("hingga 07 Oct 2026 21:12 WIB")
+	if expiry.IsZero() {
+		expiry = time.Now().Add(15 * time.Minute)
+	}
+	locWIB := time.FixedZone("WIB", 7*3600)
+	expiryFormatted := expiry.In(locWIB).Format("02 Jan 2006 15:04 WIB")
+
+	faceExpReg := truetype.NewFace(fontRobotoReg, &truetype.Options{Size: 33})
+	faceExpBold := truetype.NewFace(fontRobotoBold, &truetype.Options{Size: 33})
+
+	textPart1 := "hingga "
+	dc.SetFontFace(faceExpReg)
+	w1, _ := dc.MeasureString(textPart1)
+
+	dc.SetFontFace(faceExpBold)
+	w2, _ := dc.MeasureString(expiryFormatted)
+
+	totalExpW := w1 + w2
+	startExpX := 552.0 - (totalExpW / 2.0)
+	yBaseExp := 1365.0
+
+	dc.SetFontFace(faceExpReg)
+	dc.SetHexColor("#526270")
+	dc.DrawString(textPart1, startExpX, yBaseExp)
+
+	dc.SetFontFace(faceExpBold)
+	dc.SetHexColor("#526270")
+	dc.DrawString(expiryFormatted, startExpX+w1, yBaseExp)
 
 	buf := new(bytes.Buffer)
 	if err := dc.EncodePNG(buf); err != nil {
