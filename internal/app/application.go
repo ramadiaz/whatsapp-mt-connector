@@ -139,8 +139,9 @@ func Run() error {
 
 	webhookH := handler.NewWebhookHandler(webhookSvc)
 	healthH := handler.NewHealthHandler(db, gowaClient)
+	paymentWebhookH := handler.NewPaymentWebhookHandler(gowaClient, cfg.GOWADeviceID, db)
 
-	router := deliveryhttp.NewRouter(webhookH, healthH)
+	router := deliveryhttp.NewRouter(webhookH, healthH, paymentWebhookH)
 
 	addr := fmt.Sprintf("%s:%s", cfg.AppHost, cfg.AppPort)
 	srv := &http.Server{

@@ -9,7 +9,7 @@ import (
 	"github.com/ramadiaz/whatsapp-mt-connector/internal/delivery/http/handler"
 )
 
-func NewRouter(webhookHandler *handler.WebhookHandler, healthHandler *handler.HealthHandler) http.Handler {
+func NewRouter(webhookHandler *handler.WebhookHandler, healthHandler *handler.HealthHandler, paymentWebhookHandler *handler.PaymentWebhookHandler) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -23,6 +23,7 @@ func NewRouter(webhookHandler *handler.WebhookHandler, healthHandler *handler.He
 	r.Get("/readyz", healthHandler.Readyz)
 
 	r.Post("/webhooks/gowa", webhookHandler.Handle)
+	r.Post("/webhooks/payment", paymentWebhookHandler.Handle)
 
 	return r
 }
